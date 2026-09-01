@@ -33,7 +33,9 @@ const (
 	agentModelProviderMediago  = coregeneration.ProviderMediago
 	agentModelProviderDMXAPI   = ModelPlatformDMXAPI
 	agentModelProviderDeepSeek = "deepseek"
+	agentModelProviderAIHubMix = "aihubmix"
 	mediagoModelListTimeout    = 5 * time.Second
+	openAIModelListTimeout     = 5 * time.Second
 )
 
 var (
@@ -118,6 +120,48 @@ type OpenCodeRuntimeConfig struct {
 	RestrictModelValues   bool
 	AllowedModelValues    []string
 	AllowedModelProviders []string
+}
+
+// AgentCoreRuntimeModel is one configured model exposed through MediaGo Agent Core.
+type AgentCoreRuntimeModel struct {
+	Value string `json:"value"`
+	Name  string `json:"name"`
+}
+
+// ListConfiguredAgentCoreRuntimeModels returns only models whose provider credentials are configured.
+func (service *Settings) ListConfiguredAgentCoreRuntimeModels(ctx context.Context) ([]AgentCoreRuntimeModel, error) {
+	profiles, _, err := service.officialAgentRuntimeProfiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	models := make([]AgentCoreRuntimeModel, 0, len(profiles))
+	seen := map[string]bool{}
+	for _, profile := range profiles {
+		providerID := strings.TrimSpace(profile.ProviderID)
+		modelID := strings.TrimSpace(profile.Model)
+		if providerID == "" || modelID == "" {
+			continue
+		}
+		value := providerID + "/" + modelID
+		key := strings.ToLower(value)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		display := strings.TrimSpace(profile.ModelDisplayName)
+		if display == "" {
+			display = modelID
+		}
+		providerLabel := strings.TrimSpace(profile.ProviderLabel)
+		if providerLabel == "" {
+			providerLabel = providerID
+		}
+		models = append(models, AgentCoreRuntimeModel{
+			Value: value,
+			Name:  providerLabel + "/" + display,
+		})
+	}
+	return models, nil
 }
 
 // ListAgentModelProfiles returns global ACP model profiles with redacted credential state.
@@ -567,6 +611,17 @@ func AgentModelProfileTemplates() []AgentModelProfileTemplate {
 			Temperature:      &zero,
 		},
 		{
+			ID:               "aihubmix",
+			Name:             "AIHubMix",
+			ProviderID:       agentModelProviderAIHubMix,
+			ProviderLabel:    "AIHubMix",
+			BaseURL:          "https://aihubmix.com/v1",
+			Model:            "gpt-4.1-mini",
+			ModelDisplayName: "GPT-4.1 Mini",
+			SupportsTools:    true,
+			Temperature:      &zero,
+		},
+		{
 			ID:               "deepseek",
 			Name:             "DeepSeek",
 			ProviderID:       "deepseek",
@@ -680,6 +735,16 @@ func (service *Settings) officialAgentRuntimeProfileSpecs() []officialAgentModel
 			Temperature:       &zero,
 		},
 		{
+			ProviderID:        agentModelProviderAIHubMix,
+			ProviderLabel:     "AIHubMix",
+			BaseURL:           service.AIHubMixBaseURL(),
+			CredentialKeyName: agentModelProviderAIHubMix,
+			RouteProvider:     coregeneration.ProviderOpenAI,
+			LegacyProfileID:   "aihubmix",
+			SupportsTools:     true,
+			Temperature:       &zero,
+		},
+		{
 			ProviderID:        agentModelProviderDeepSeek,
 			ProviderLabel:     "DeepSeek",
 			BaseURL:           "https://api.deepseek.com/v1",
@@ -711,6 +776,7 @@ func allAgentRuntimeCapabilitySpecs() []officialAgentModelProfileSpec {
 		{CredentialKeyName: coregeneration.ProviderOpenAI, Temperature: &zero},
 		{CredentialKeyName: coregeneration.ProviderMiniMax, Temperature: &zero},
 		{CredentialKeyName: coregeneration.ProviderDeepSeek, Temperature: &zero},
+		{CredentialKeyName: agentModelProviderAIHubMix, Temperature: &zero},
 	}
 }
 
@@ -722,7 +788,85 @@ func (service *Settings) agentRuntimeProfilesForSpec(ctx context.Context, spec o
 		}
 		return profiles, nil
 	}
+	if spec.ProviderID == agentModelProviderAIHubMix && strings.TrimSpace(apiKey) != "" {
+		profiles, err := openAICompatibleAgentRuntimeProfiles(ctx, spec, apiKey)
+		if err != nil {
+			return nil, nil
+		}
+		return profiles, nil
+	}
 	return catalogAgentRuntimeProfilesForSpec(spec), nil
+}
+
+type openAIModelListResponse struct {
+	Data []openAIModelListItem `json:"data"`
+}
+
+type openAIModelListItem struct {
+	ID string `json:"id"`
+}
+
+func openAICompatibleAgentRuntimeProfiles(ctx context.Context, spec officialAgentModelProfileSpec, apiKey string) ([]domainAgentModelProfile, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(spec.BaseURL), "/")
+	if baseURL == "" {
+		return nil, nil
+	}
+	models, err := fetchOpenAICompatibleModels(ctx, baseURL, apiKey)
+	if err != nil {
+		return nil, err
+	}
+
+	profiles := make([]domainAgentModelProfile, 0, len(models))
+	seen := map[string]bool{}
+	for _, item := range models {
+		modelID := strings.TrimSpace(item.ID)
+		if modelID == "" || seen[modelID] || mediagoGatewayModelLooksTaskOnly(mediagoGatewayModel{ID: modelID}) {
+			continue
+		}
+		seen[modelID] = true
+		displayName := agentRuntimeModelDisplayName(modelID)
+		profiles = append(profiles, domainAgentModelProfile{
+			ID:               profileIDFromProviderID(spec.ProviderID + "-" + modelID),
+			Name:             strings.TrimSpace(spec.ProviderLabel + " " + displayName),
+			ProviderID:       strings.TrimSpace(spec.ProviderID),
+			ProviderLabel:    strings.TrimSpace(spec.ProviderLabel),
+			BaseURL:          baseURL,
+			Model:            modelID,
+			ModelDisplayName: displayName,
+			Enabled:          true,
+			SupportsImages:   spec.SupportsImages,
+			SupportsTools:    spec.SupportsTools,
+			Temperature:      cloneFloat(spec.Temperature),
+		})
+	}
+	return profiles, nil
+}
+
+func fetchOpenAICompatibleModels(ctx context.Context, baseURL string, apiKey string) ([]openAIModelListItem, error) {
+	ctx, cancel := context.WithTimeout(ctx, openAIModelListTimeout)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(strings.TrimSpace(baseURL), "/")+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("openai-compatible model list returned HTTP %d", response.StatusCode)
+	}
+
+	var payload openAIModelListResponse
+	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&payload); err != nil {
+		return nil, err
+	}
+	return payload.Data, nil
 }
 
 func catalogAgentRuntimeProfilesForSpec(spec officialAgentModelProfileSpec) []domainAgentModelProfile {

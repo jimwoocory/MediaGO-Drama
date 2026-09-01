@@ -26,6 +26,9 @@ func TestWorkspaceStateServiceProjectConfig(t *testing.T) {
 		config.Name != projectID ||
 		config.Description != "" ||
 		len(config.Overview.CategoryDefaults) != 0 ||
+		config.Production.SchemaVersion != 1 ||
+		config.Production.ProfileID != "" ||
+		config.Production.TargetDurationSeconds != 0 ||
 		config.CreatedAt == "" {
 		t.Fatalf("config = %#v, want minimal project config", config)
 	}
@@ -41,6 +44,24 @@ func TestWorkspaceStateServiceProjectConfig(t *testing.T) {
 		result.Config.Overview.CategoryDefaults["extra"] != "video-cinematic-shot" ||
 		result.Config.Overview.CategoryDefaults["style"] != "" {
 		t.Fatalf("result = %#v, want changed category defaults", result)
+	}
+
+	profileID := "mode-a"
+	targetDuration := 900.0
+	productionResult, err := store.SaveProjectConfigPatchInput(projectID, mediamcp.ProjectConfigPatchInput{
+		Production: &mediamcp.ProjectProductionConfigPatch{
+			ProfileID:             &profileID,
+			TargetDurationSeconds: &targetDuration,
+		},
+	})
+	if err != nil {
+		t.Fatalf("saving production config returned error: %v", err)
+	}
+	if !productionResult.Changed ||
+		productionResult.Config.Production.SchemaVersion != 1 ||
+		productionResult.Config.Production.ProfileID != "mode-a" ||
+		productionResult.Config.Production.TargetDurationSeconds != 900 {
+		t.Fatalf("production result = %#v, want persisted production config", productionResult)
 	}
 
 	data, err := os.ReadFile(filepath.Join(projectDir, "project.media.json"))
@@ -62,12 +83,34 @@ func TestWorkspaceStateServiceProjectConfig(t *testing.T) {
 	if !ok || defaults["extra"] != "video-cinematic-shot" || defaults["style"] != nil {
 		t.Fatalf("overview = %#v, want category defaults persisted", rawManifest["overview"])
 	}
+	production, ok := rawManifest["production"].(map[string]any)
+	if !ok || production["schemaVersion"] != float64(1) || production["profileId"] != "mode-a" || production["targetDurationSeconds"] != float64(900) {
+		t.Fatalf("production = %#v, want production config persisted", rawManifest["production"])
+	}
+
+	reloaded, err := store.LoadProjectConfig(projectID)
+	if err != nil {
+		t.Fatalf("reloading project config returned error: %v", err)
+	}
+	if reloaded.Production.ProfileID != "mode-a" || reloaded.Production.TargetDurationSeconds != 900 {
+		t.Fatalf("reloaded production = %#v, want saved values", reloaded.Production)
+	}
+
+	negativeDuration := -1.0
+	if _, err := store.SaveProjectConfigPatchInput(projectID, mediamcp.ProjectConfigPatchInput{
+		Production: &mediamcp.ProjectProductionConfigPatch{TargetDurationSeconds: &negativeDuration},
+	}); err == nil {
+		t.Fatal("negative targetDurationSeconds should be rejected")
+	}
 
 	empty, err := store.SaveProjectConfigPatchInput(projectID, mediamcp.ProjectConfigPatchInput{})
 	if err != nil {
 		t.Fatalf("empty SaveProjectConfigPatchInput returned error: %v", err)
 	}
-	if empty.Changed || empty.Config.Overview.CategoryDefaults["extra"] != "video-cinematic-shot" {
+	if empty.Changed ||
+		empty.Config.Overview.CategoryDefaults["extra"] != "video-cinematic-shot" ||
+		empty.Config.Production.ProfileID != "mode-a" ||
+		empty.Config.Production.TargetDurationSeconds != 900 {
 		t.Fatalf("empty result = %#v, want unchanged category defaults", empty)
 	}
 }

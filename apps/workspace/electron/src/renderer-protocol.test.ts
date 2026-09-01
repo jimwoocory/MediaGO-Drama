@@ -31,7 +31,9 @@ describe("desktop renderer protocol", () => {
 	});
 
 	it("does not allow inline, eval, or arbitrary remote scripts", () => {
-		expect(rendererContentSecurityPolicy.split("; ")).toContain("script-src 'self'");
-		expect(rendererContentSecurityPolicy).not.toContain("'unsafe-eval'");
+		const policy = rendererContentSecurityPolicy("http://127.0.0.1:54321");
+		expect(policy.split("; ")).toContain("script-src 'self'");
+		expect(policy).toContain("connect-src 'self' http://127.0.0.1:54321 https: wss:");
+		expect(policy).not.toContain("'unsafe-eval'");
 	});
 });

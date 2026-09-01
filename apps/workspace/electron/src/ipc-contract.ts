@@ -1,4 +1,5 @@
 export const desktopIpcChannel = {
+	authenticateStartup: "desktop:authenticate-startup",
 	openExternal: "desktop:open-external",
 	openPath: "desktop:open-path",
 	revealPath: "desktop:reveal-path",

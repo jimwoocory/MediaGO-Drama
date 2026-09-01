@@ -826,6 +826,17 @@ func apiKeyProviders() []APIKeyProvider {
 		})
 	}
 
+	providers = append(providers, APIKeyProvider{
+		ID:              agentModelProviderAIHubMix,
+		Label:           "AIHubMix",
+		Description:     "AIHubMix OpenAI-compatible agent routes",
+		CredentialLabel: "AIHubMix API Key",
+		Placeholder:     "输入 AIHubMix API Key",
+		Help:            "用于 MediaGo Agent Core 的 AIHubMix 模型；Base URL 可在智能体模型配置中修改。",
+		Capabilities:    apiKeyProviderCapabilities(agentModelProviderAIHubMix, false),
+		keyName:         agentModelProviderAIHubMix,
+	})
+
 	return providers
 }
 

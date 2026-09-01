@@ -7,15 +7,122 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/http/middleware"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	serviceacp "github.com/mediago-dev/mediago-drama/services/server/internal/service/acp"
+	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
+	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
+
+func TestMediaGoAgentCoreProviderRouting(t *testing.T) {
+	for _, provider := range []string{"mediago", "AIHubMix", "dmxapi", "openrouter", "openai", "minimax-cn"} {
+		if !mediaGoAgentCoreProvider(provider) {
+			t.Fatalf("provider %q should route through MediaGo Agent Core", provider)
+		}
+	}
+	for _, provider := range []string{"", "codex", "deepseek", "github-copilot", "unknown"} {
+		if mediaGoAgentCoreProvider(provider) {
+			t.Fatalf("provider %q should not route through MediaGo Agent Core", provider)
+		}
+	}
+}
+
+func TestAgentBackendIDForRuntimeModel(t *testing.T) {
+	for _, test := range []struct {
+		model string
+		want  string
+	}{
+		{model: "", want: "codex"},
+		{model: "gpt-5.6", want: "codex"},
+		{model: "aihubmix/gpt-5.5", want: "opencode"},
+		{model: "deepseek/deepseek-chat", want: "opencode"},
+		{model: "unknown/model", want: "codex"},
+	} {
+		if got := agentBackendIDForRuntimeModel(test.model); got != test.want {
+			t.Fatalf("agentBackendIDForRuntimeModel(%q) = %q, want %q", test.model, got, test.want)
+		}
+	}
+}
+
+func TestSharedCapabilityChainIndependentOfHarness(t *testing.T) {
+	if mediaGoAgentCoreProvider("deepseek") {
+		t.Fatal("DeepSeek must not use generic OpenAI-compatible Agent Core routing")
+	}
+	if !deepSeekHarnessAdapterProvider("DeepSeek") {
+		t.Fatal("DeepSeek must use the dedicated harness adapter path")
+	}
+	if got := agentBackendIDForRuntimeModel("deepseek/deepseek-chat"); got != "opencode" {
+		t.Fatalf("DeepSeek backend = %q, want opencode adapter", got)
+	}
+	if got := agentBackendIDForRuntimeModel("gpt-5.6"); got != "codex" {
+		t.Fatalf("Codex backend = %q, want codex", got)
+	}
+
+	root := t.TempDir()
+	base := serviceacp.AgentRunRequest{
+		ProjectID:   "project-safe_1",
+		SessionID:   "session-shared",
+		RunID:       "run-shared",
+		AgentTag:    "MediaGo Drama Agent",
+		BridgeURL:   "http://127.0.0.1:8080/api/v1/internal/mcp",
+		BridgeToken: "bridge-token",
+	}
+	codexReq := base
+	codexReq.Model = serviceacp.AgentACPConfigSelection{Value: "gpt-5.6"}
+	deepseekReq := base
+	deepseekReq.Model = serviceacp.AgentACPConfigSelection{Value: "deepseek/deepseek-chat"}
+
+	codex := serviceacp.ResolveDocumentMCPServersForRun(root, codexReq)
+	deepseek := serviceacp.ResolveDocumentMCPServersForRun(root, deepseekReq)
+	if len(codex.Servers) != 2 || len(deepseek.Servers) != 2 {
+		t.Fatalf("codex servers=%d deepseek servers=%d, want 2 each", len(codex.Servers), len(deepseek.Servers))
+	}
+	if codex.Servers[0].Http == nil || deepseek.Servers[0].Http == nil {
+		t.Fatal("document MCP must use HTTP when bridge is available")
+	}
+	if codex.Servers[0].Http.Name != deepseek.Servers[0].Http.Name ||
+		codex.Servers[0].Http.Url != deepseek.Servers[0].Http.Url {
+		t.Fatalf("document MCP diverged: codex=%q/%q deepseek=%q/%q",
+			codex.Servers[0].Http.Name, codex.Servers[0].Http.Url,
+			deepseek.Servers[0].Http.Name, deepseek.Servers[0].Http.Url)
+	}
+	if codex.Servers[1].Http == nil || deepseek.Servers[1].Http == nil {
+		t.Fatal("generation MCP must use HTTP when bridge is available")
+	}
+	if codex.Servers[1].Http.Name != deepseek.Servers[1].Http.Name ||
+		codex.Servers[1].Http.Url != deepseek.Servers[1].Http.Url {
+		t.Fatalf("generation MCP diverged: codex=%q/%q deepseek=%q/%q",
+			codex.Servers[1].Http.Name, codex.Servers[1].Http.Url,
+			deepseek.Servers[1].Http.Name, deepseek.Servers[1].Http.Url)
+	}
+
+	registry := serviceskill.NewRegistryWithStore(sharedSkillIndexStore{
+		entries: []servicepromptpack.Entry{{
+			Kind:        instructionpack.KindSkill,
+			Slug:        "shot-schema",
+			Name:        "shot-schema",
+			Description: "拆分镜头并写入 Shot Schema",
+		}},
+	})
+	codexPrompt := promptBuildOptionsWithSkillRegistry(codexReq, 0, registry)
+	deepseekPrompt := promptBuildOptionsWithSkillRegistry(deepseekReq, 0, registry)
+	if len(codexPrompt.Skills) == 0 {
+		t.Fatal("shared skill index must be visible to both harnesses")
+	}
+	if !reflect.DeepEqual(codexPrompt.Skills, deepseekPrompt.Skills) {
+		t.Fatalf("skill index diverged: %#v vs %#v", codexPrompt.Skills, deepseekPrompt.Skills)
+	}
+	if strings.TrimSpace(codexReq.WorkspaceDir) != strings.TrimSpace(deepseekReq.WorkspaceDir) {
+		t.Fatalf("workspace diverged: %q vs %q", codexReq.WorkspaceDir, deepseekReq.WorkspaceDir)
+	}
+}
 
 func TestNewHandlerRequiresSidecarToken(t *testing.T) {
 	const token = "sidecar-token-with-at-least-thirty-two-bytes"

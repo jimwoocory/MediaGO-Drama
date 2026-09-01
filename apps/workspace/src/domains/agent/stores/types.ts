@@ -73,6 +73,7 @@ export type AgentDisplaySegment =
 
 export interface AgentMessageMetadata {
 	toolName?: string;
+	canonicalToolName?: string;
 	filePath?: string;
 	lineRange?: [number, number];
 	inputArgs?: string;

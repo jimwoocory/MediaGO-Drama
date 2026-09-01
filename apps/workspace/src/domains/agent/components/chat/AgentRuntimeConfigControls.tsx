@@ -724,7 +724,7 @@ const AgentRuntimeModelBrandStack: React.FC<{
 const runtimeConfigOptions = (config?: AgentRuntimeSelectConfig) =>
 	(config?.options ?? []).filter((option) => option.value.trim().length > 0);
 
-const DEFAULT_AGENT_PROVIDER_LABEL = "默认提供方";
+const DEFAULT_AGENT_PROVIDER_LABEL = "Codex-GPT";
 
 const parseAgentRuntimeModelOption = (
 	option: AgentRuntimeSelectOption,
@@ -801,6 +801,10 @@ const agentProviderLabel = (provider: string) => {
 	switch (normalized) {
 		case "mediago":
 			return "MediaGo";
+		case "aihubmix":
+			return "AIHubMix";
+		case "deepseek":
+			return "DeepSeek";
 		case "openrouter":
 			return "OpenRouter";
 		case "dmx":
@@ -809,6 +813,7 @@ const agentProviderLabel = (provider: string) => {
 		case "openai":
 			return "OpenAI";
 		case "minimax":
+		case "minimaxcn":
 			return "MiniMax 国内";
 		case "opencode":
 		case "opencodezen":

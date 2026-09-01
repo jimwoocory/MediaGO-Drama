@@ -103,6 +103,117 @@ func (client *acpClient) resetMessage() {
 	client.activeMessageItemID = ""
 	client.streamedMessage = false
 	client.runtimeErrorMessage = ""
+	client.dsmlCarry = ""
+	client.dsmlInside = false
+	client.toolGuard.reset()
+}
+
+func (client *acpClient) observeToolLoopGuard(toolCallID string, toolKind string, title string, rawInput []byte) toolLoopGuardDecision {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.toolGuard.observe(toolCallID, toolKind, title, rawInput)
+}
+
+func (client *acpClient) toolLoopGuardReason() string {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.toolGuard.forceFinalizeReason
+}
+
+var dsmlStartTokens = []string{
+	"<｜DSML｜tool_calls>",
+	"<|DSML|tool_calls>",
+	"<||DSML||tool_calls>",
+}
+
+var dsmlEndTokens = []string{
+	"</｜DSML｜tool_calls>",
+	"</|DSML|tool_calls>",
+	"</||DSML||tool_calls>",
+}
+
+// filterDSMLChunk removes provider-internal DSML tool-call markup before it can
+// enter the visible transcript. It keeps partial tag prefixes between chunks so
+// split streaming markers are suppressed as reliably as markers in one chunk.
+func (client *acpClient) filterDSMLChunk(text string) string {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+
+	input := client.dsmlCarry + text
+	client.dsmlCarry = ""
+	var visible strings.Builder
+
+	for input != "" {
+		if client.dsmlInside {
+			index, token := earliestToken(input, dsmlEndTokens)
+			if index < 0 {
+				client.dsmlCarry = longestTokenPrefixSuffix(input, dsmlEndTokens)
+				return visible.String()
+			}
+			input = input[index+len(token):]
+			client.dsmlInside = false
+			continue
+		}
+
+		index, token := earliestToken(input, dsmlStartTokens)
+		if index >= 0 {
+			visible.WriteString(input[:index])
+			input = input[index+len(token):]
+			client.dsmlInside = true
+			continue
+		}
+
+		carry := longestTokenPrefixSuffix(input, dsmlStartTokens)
+		if carry != "" {
+			visible.WriteString(input[:len(input)-len(carry)])
+			client.dsmlCarry = carry
+		} else {
+			visible.WriteString(input)
+		}
+		break
+	}
+	return visible.String()
+}
+
+func (client *acpClient) flushDSMLCarry() string {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if client.dsmlInside {
+		client.dsmlCarry = ""
+		return ""
+	}
+	carry := client.dsmlCarry
+	client.dsmlCarry = ""
+	return carry
+}
+
+func earliestToken(input string, tokens []string) (int, string) {
+	bestIndex := -1
+	bestToken := ""
+	for _, token := range tokens {
+		if index := strings.Index(input, token); index >= 0 && (bestIndex < 0 || index < bestIndex) {
+			bestIndex = index
+			bestToken = token
+		}
+	}
+	return bestIndex, bestToken
+}
+
+func longestTokenPrefixSuffix(input string, tokens []string) string {
+	best := ""
+	for _, token := range tokens {
+		limit := len(token) - 1
+		if len(input) < limit {
+			limit = len(input)
+		}
+		for length := limit; length > len(best); length-- {
+			if strings.HasSuffix(input, token[:length]) {
+				best = token[:length]
+				break
+			}
+		}
+	}
+	return best
 }
 
 func (client *acpClient) normalizeEvent(event agentEvent) agentEvent {

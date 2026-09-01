@@ -37,6 +37,7 @@ type acpSessionConfigurator interface {
 type acpAgentRunner struct {
 	commandFn              func() string
 	argvFn                 func() []string
+	modelBackendArgvFn     func(string) []string
 	workspaceDir           string
 	documentMCPConfigPath  string
 	buildPrompt            func(AgentRunRequest) string
@@ -78,6 +79,9 @@ type acpClient struct {
 	thoughtChunkCount   int
 	toolCallCount       int
 	toolCallStarts      map[string]time.Time
+	dsmlCarry           string
+	dsmlInside          bool
+	toolGuard           toolLoopGuard
 	pendingPermissions  sync.Map
 	pendingRequests     sync.Map
 	permissionTimeout   time.Duration
@@ -189,9 +193,20 @@ func (runner *acpAgentRunner) SetProcessConfigProvider(provider ProcessConfigPro
 	runner.processConfigProvider = provider
 }
 
+// SetModelBackendArgvResolver selects an ACP backend from the runtime model value.
+// Returning nil keeps the currently active backend.
+func (runner *acpAgentRunner) SetModelBackendArgvResolver(resolve func(string) []string) {
+	if runner == nil {
+		return
+	}
+	runner.modelBackendArgvFn = resolve
+}
+
 // InspectSessionConfig probes ACP runtime config for a project.
 func (runner *acpAgentRunner) InspectSessionConfig(ctx context.Context, projectID string, projectDir string) (agentRuntimeConfigResponse, error) {
-	command, args := runner.activeCommandArgv()
+	// The combined model picker is based on Codex capabilities plus configured Core models.
+	// An empty model therefore deliberately resolves to the Codex Harness.
+	command, args := runner.activeCommandArgvForModel("")
 	workspaceDir := runner.absoluteWorkspaceDir()
 	request := agentRunRequest{
 		ProjectID:    projectID,
@@ -297,6 +312,18 @@ func (runner *acpAgentRunner) InspectSessionConfig(ctx context.Context, projectI
 		)...,
 	)
 	return config, nil
+}
+
+func (runner *acpAgentRunner) activeCommandArgvForModel(model string) (string, []string) {
+	if runner != nil && runner.modelBackendArgvFn != nil {
+		argv := runner.modelBackendArgvFn(strings.TrimSpace(model))
+		if len(argv) > 0 && strings.TrimSpace(argv[0]) != "" {
+			command := strings.TrimSpace(argv[0])
+			args := append([]string(nil), argv[1:]...)
+			return command, args
+		}
+	}
+	return runner.activeCommandArgv()
 }
 
 func (runner *acpAgentRunner) activeCommandArgv() (string, []string) {
@@ -416,15 +443,27 @@ func mergedProcessEnv(processConfig ProcessConfig) []string {
 	// ACP agents run behind the MediaGo UI, so authentication failures must be
 	// reported through ACP instead of spawning browser tabs from a background process.
 	env["NO_BROWSER"] = "1"
-	for _, key := range []string{"NO_PROXY", "no_proxy"} {
-		env[key] = appendEnvListValues(env[key], "127.0.0.1", "localhost", "::1")
-	}
+	applyLoopbackProxyBypass(env)
 	result := make([]string, 0, len(env))
 	for key, value := range env {
 		result = append(result, key+"="+value)
 	}
 	sort.Strings(result)
 	return result
+}
+
+func applyLoopbackProxyBypass(env map[string]string) {
+	combined := env["NO_PROXY"]
+	if other := env["no_proxy"]; other != "" && !strings.EqualFold(combined, other) {
+		if combined == "" {
+			combined = other
+		} else {
+			combined = combined + "," + other
+		}
+	}
+	merged := appendEnvListValues(combined, "127.0.0.1", "localhost", "::1")
+	env["NO_PROXY"] = merged
+	env["no_proxy"] = merged
 }
 
 func appendEnvListValues(current string, required ...string) string {

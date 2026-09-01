@@ -257,6 +257,7 @@ const handleACPAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.ac
 			{
 				title: displayTitle,
 				toolName: displayTitle,
+				canonicalToolName: acp.toolName?.trim() || undefined,
 				acpKind: acp.toolKind || (displayTitle ? inferToolKind(displayTitle) : undefined),
 				status: acp.status,
 				inputJson: acp.rawInput,

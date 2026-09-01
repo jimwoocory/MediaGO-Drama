@@ -294,6 +294,20 @@ var familySpecs = []familySpec{
 	},
 	{
 		Family: ModelFamily{
+			ID:          FamilySpeechAPI,
+			Label:       "第三方 Speech API",
+			Kind:        KindAudio,
+			Description: "OpenAI-compatible 文本转语音接口",
+		},
+		Versions: []ModelVersion{
+			version(VersionSpeechAPICompatible, FamilySpeechAPI, "OpenAI-compatible Speech", KindAudio, ModelSpeechAPICompatible, false, false),
+		},
+		Routes: []ModelRoute{
+			officialRoute(RouteSpeechAPICompatible, FamilySpeechAPI, VersionSpeechAPICompatible, KindAudio, "第三方 Speech API", ModelSpeechAPICompatible, AdapterSpeechAPICompatible, "https://platform.openai.com/docs/api-reference/audio/createSpeech", []string{ProviderSpeechAPI}, speechAPIParams(), false, false),
+		},
+	},
+	{
+		Family: ModelFamily{
 			ID:          FamilyMiniMaxSpeech,
 			Label:       "MiniMax 国内 Speech",
 			Kind:        KindAudio,

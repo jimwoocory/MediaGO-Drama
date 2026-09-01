@@ -16,6 +16,11 @@ import {
 
 const api = {
 	platform: process.platform,
+	authenticateStartup: (credentials: { username: string; password: string }) =>
+		ipcRenderer.invoke(desktopIpcChannel.authenticateStartup, credentials) as Promise<{
+			ok: boolean;
+			message?: string;
+		}>,
 	isElectron: true,
 	openExternal: (url: string) => ipcRenderer.invoke(desktopIpcChannel.openExternal, url),
 	openPath: (path: string) => ipcRenderer.invoke(desktopIpcChannel.openPath, path),

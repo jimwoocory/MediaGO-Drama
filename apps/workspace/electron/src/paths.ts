@@ -14,6 +14,10 @@ export const preloadPath = () => join(electronDir, "preload.cjs");
 export const resourceRoot = () =>
 	isPackaged() ? process.resourcesPath : join(workspaceDir, "electron", "resources");
 
+export const portableWorkspaceDir = () => join(dirname(process.execPath), "data", "workspace");
+export const legacyUserWorkspaceDir = () =>
+	join(app.getPath("appData"), "mediago-drama", "workspace");
+
 export const serverBinaryPath = () => {
 	const binary = process.platform === "win32" ? "mediago-server.exe" : "mediago-server";
 	return join(resourceRoot(), "bin", binary);

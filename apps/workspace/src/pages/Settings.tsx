@@ -25,23 +25,25 @@ import {
 	type APIKeyProvider,
 	type ModelPlatform,
 	type ModelPlatformModelGroup,
+	aihubmixSettingsKey,
 	apiKeysKey,
 	beginProviderLogin,
 	clearAPIKey,
 	completeProviderLogin,
+	getAIHubMixSettings,
 	getAPIKeys,
+	getSpeechAPISettings,
 	getJianyingDraftSettings,
 	getModelPlatforms,
 	jianyingDraftSettingsKey,
 	modelPlatformsKey,
+	speechAPISettingsKey,
+	saveAIHubMixSettings,
 	saveAPIKey,
+	saveSpeechAPISettings,
 	saveJianyingDraftSettings,
 } from "@/domains/settings/api/settings";
-import {
-	agentBackendsKey,
-	getAgentBackends,
-	isAgentRuntimeConfigKey,
-} from "@/domains/agent/api/agent";
+import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
 import { generationModelsKey } from "@/domains/generation/api/generation";
 import { CodexAccessPanel } from "@/domains/settings/components/CodexAccessPanel";
 import { CodexSkillsPanel } from "@/domains/settings/components/CodexSkillsPanel";
@@ -73,6 +75,11 @@ import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
 import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
+import {
+	ProviderCapabilityMatrix,
+	providerRowElementID,
+	type ProviderCapabilityTarget,
+} from "@/domains/settings/components/ProviderCapabilityMatrix";
 
 const jianyingDraftSettingsEnabled: boolean = false;
 const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== "false";
@@ -127,12 +134,7 @@ export const Settings: React.FC = () => {
 	const setThemeMode = useThemeStore((state) => state.setMode);
 	const activeTab = useSettingsNavigationStore((state) => state.activeTab);
 	const normalizedTab = normalizeSettingsTab(activeTab);
-	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends);
-	const isCodexActive = (agentBackends?.activeId ?? "codex") === "codex";
-	const visibleTab =
-		isSettingsTabValue(normalizedTab) && (normalizedTab !== "codex-access" || isCodexActive)
-			? normalizedTab
-			: "appearance";
+	const visibleTab = isSettingsTabValue(normalizedTab) ? normalizedTab : "appearance";
 
 	if (projectId && normalizedTab === projectSettingsGeneralTab) return <ProjectSettings />;
 
@@ -167,32 +169,42 @@ const APIKeysPanel: React.FC = () => {
 		modelPlatformsKey,
 		getModelPlatforms,
 	);
+	const { data: aihubmixSettings, mutate: mutateAIHubMixSettings } = useSWR(
+		aihubmixSettingsKey,
+		getAIHubMixSettings,
+	);
+	const { data: speechAPISettings, mutate: mutateSpeechAPISettings } = useSWR(
+		speechAPISettingsKey,
+		getSpeechAPISettings,
+	);
 	const providers = data?.providers ?? [];
 	const modelPlatforms = modelPlatformsData?.platforms ?? [];
 	const providersByID = new Map(providers.map((provider) => [provider.id, provider]));
-	const unifiedProviders = platformProviders(modelPlatforms, providersByID, "unified");
-	const mediagoProvider = platformProvider(modelPlatforms, providersByID, mediagoProviderID);
-	const mediagoModelGroups =
-		modelPlatforms.find((platform) => platform.id === mediagoProviderID)?.modelGroups ?? [];
-	const visibleUnifiedProviders = unifiedProviders.filter(
-		(provider) => provider.id !== mediagoProviderID,
-	);
+	const aihubmixProvider = providersByID.get("aihubmix");
+	const speechAPIProvider = providersByID.get("speechapi");
 	const cliProviders =
 		modelPlatforms.length > 0
 			? platformProviders(modelPlatforms, providersByID, "cli")
 			: providers.filter((provider) => fallbackCLIProviderIDs.has(provider.id));
 	const customProviders = customProvidersEnabled
-		? platformProviders(modelPlatforms, providersByID, "custom")
+		? platformProviders(modelPlatforms, providersByID, "custom").filter(
+				(provider) => provider.id !== "aihubmix",
+			)
 		: [];
-	const officialProviders = officialAPIKeyProviders(providers, modelPlatforms);
+	const officialProviders = officialAPIKeyProviders(providers, modelPlatforms).filter(
+		(provider) => provider.id !== "speechapi",
+	);
 	const [otherProvidersExpanded, setOtherProvidersExpanded] = useState(false);
-	const [mediagoDialogOpen, setMediagoDialogOpen] = useState(false);
 	const [apiKeys, setAPIKeys] = useState<Record<string, string>>({});
 	const [savingID, setSavingID] = useState<string>();
 	const [clearingID, setClearingID] = useState<string>();
 	const [loggingInID, setLoggingInID] = useState<string>();
 	const [checkingLoginID, setCheckingLoginID] = useState<string>();
 	const [manualProviderID, setManualProviderID] = useState<string>();
+	const [aihubmixBaseURL, setAIHubMixBaseURL] = useState("https://aihubmix.com/v1");
+	const [speechAPIBaseURL, setSpeechAPIBaseURL] = useState("");
+	const [speechAPIModel, setSpeechAPIModel] = useState("gpt-4o-mini-tts");
+	const [speechAPIVoice, setSpeechAPIVoice] = useState("alloy");
 	const [loginChallenges, setLoginChallenges] = useState<Record<string, APIKeyLoginChallenge>>({});
 	const hasPendingBrowserLogin = Object.values(loginChallenges).some(
 		(challenge) => challenge.status === "pending" && Boolean(challenge.verificationUri),
@@ -201,6 +213,17 @@ const APIKeysPanel: React.FC = () => {
 		void mutateGlobal(generationModelsKey, undefined, { revalidate: true });
 		void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
 	}, [mutateGlobal]);
+
+	useEffect(() => {
+		if (aihubmixSettings?.baseURL) setAIHubMixBaseURL(aihubmixSettings.baseURL);
+	}, [aihubmixSettings?.baseURL]);
+
+	useEffect(() => {
+		if (!speechAPISettings) return;
+		setSpeechAPIBaseURL(speechAPISettings.baseURL ?? "");
+		setSpeechAPIModel(speechAPISettings.model || "gpt-4o-mini-tts");
+		setSpeechAPIVoice(speechAPISettings.voice || "alloy");
+	}, [speechAPISettings]);
 
 	useEffect(() => {
 		if (!hasPendingBrowserLogin) return;
@@ -314,12 +337,6 @@ const APIKeysPanel: React.FC = () => {
 		});
 	};
 
-	const saveMediagoQuickSetup = async () => {
-		if (!mediagoProvider) return;
-		const saved = await save(mediagoProvider);
-		if (saved) setMediagoDialogOpen(false);
-	};
-
 	const login = async (provider: APIKeyProvider) => {
 		setLoggingInID(provider.id);
 		try {
@@ -383,6 +400,58 @@ const APIKeysPanel: React.FC = () => {
 		if (saved) setManualProviderID(undefined);
 	};
 
+	const saveAIHubMixConfig = async (provider: APIKeyProvider) => {
+		if (savingID) return;
+		setSavingID(provider.id);
+		try {
+			const nextSettings = await saveAIHubMixSettings(aihubmixBaseURL.trim());
+			await mutateAIHubMixSettings(nextSettings, false);
+			const apiKey = apiKeys[provider.id]?.trim() ?? "";
+			if (apiKey) {
+				const nextData = await saveAPIKey(provider.id, apiKey);
+				await mutate(nextData, false);
+				setAPIKeys((current) => ({ ...current, [provider.id]: "" }));
+			}
+			revalidateModelDependentCaches();
+			setManualProviderID(undefined);
+			toast.success("AIHubMix 配置已保存", { description: nextSettings.baseURL });
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "保存 AIHubMix 配置失败。";
+			toast.error("保存失败", { description: message });
+		} finally {
+			setSavingID(undefined);
+		}
+	};
+
+	const saveSpeechAPIConfig = async (provider: APIKeyProvider) => {
+		if (savingID) return;
+		const baseURL = speechAPIBaseURL.trim();
+		const apiKey = apiKeys[provider.id]?.trim() ?? "";
+		if (!baseURL || (!apiKey && !provider.configured)) return;
+		setSavingID(provider.id);
+		try {
+			if (apiKey) {
+				const nextData = await saveAPIKey(provider.id, apiKey);
+				await mutate(nextData, false);
+				setAPIKeys((current) => ({ ...current, [provider.id]: "" }));
+			}
+			const nextSettings = await saveSpeechAPISettings({
+				baseURL,
+				model: speechAPIModel.trim() || "gpt-4o-mini-tts",
+				voice: speechAPIVoice.trim() || "alloy",
+			});
+			await mutateSpeechAPISettings(nextSettings, false);
+			revalidateModelDependentCaches();
+			setManualProviderID(undefined);
+			toast.success("第三方 Speech API 配置已保存", { description: nextSettings.model });
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "保存第三方 Speech API 配置失败。";
+			toast.error("保存失败", { description: message });
+		} finally {
+			setSavingID(undefined);
+		}
+	};
+
 	const renderProvider = (provider: APIKeyProvider, hint?: string) => {
 		const apiKey = apiKeys[provider.id] ?? "";
 		const isSaving = savingID === provider.id;
@@ -391,24 +460,25 @@ const APIKeysPanel: React.FC = () => {
 		const isCheckingLogin = checkingLoginID === provider.id;
 		const isMediago = provider.id === mediagoProviderID;
 		return (
-			<APIKeyProviderRow
-				key={provider.id}
-				provider={provider}
-				apiKey={apiKey}
-				hint={hint}
-				isSaving={isSaving}
-				isClearing={isClearing}
-				isLoggingIn={isLoggingIn}
-				isCheckingLogin={isCheckingLogin}
-				loginChallenge={loginChallenges[provider.id]}
-				onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
-				onClear={() => confirmClear(provider)}
-				onConfirmLogin={() => void completeLogin(provider)}
-				onLogin={() => void login(provider)}
-				onOpenLogin={() => void openLoginChallenge(provider)}
-				onRegister={isMediago ? () => void openMediagoAPIKeyPage() : undefined}
-				onSave={() => void save(provider)}
-			/>
+			<div id={providerRowElementID(provider.id)} key={provider.id}>
+				<APIKeyProviderRow
+					provider={provider}
+					apiKey={apiKey}
+					hint={hint}
+					isSaving={isSaving}
+					isClearing={isClearing}
+					isLoggingIn={isLoggingIn}
+					isCheckingLogin={isCheckingLogin}
+					loginChallenge={loginChallenges[provider.id]}
+					onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
+					onClear={() => confirmClear(provider)}
+					onConfirmLogin={() => void completeLogin(provider)}
+					onLogin={() => void login(provider)}
+					onOpenLogin={() => void openLoginChallenge(provider)}
+					onRegister={isMediago ? () => void openMediagoAPIKeyPage() : undefined}
+					onSave={() => void save(provider)}
+				/>
+			</div>
 		);
 	};
 
@@ -420,22 +490,60 @@ const APIKeysPanel: React.FC = () => {
 		if (provider.credentialKind === "oauth") return renderProvider(provider);
 
 		const apiKey = apiKeys[provider.id] ?? "";
+		const isAIHubMix = provider.id === "aihubmix";
+		const isSpeechAPI = provider.id === "speechapi";
 		return (
-			<ManualAPIKeyProviderRow
-				key={provider.id}
-				apiKey={apiKey}
-				isClearing={clearingID === provider.id}
-				isSaving={savingID === provider.id}
-				onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
-				onClear={() => confirmClear(provider)}
-				onOpenChange={(open) => setManualProviderID(open ? provider.id : undefined)}
-				onSave={() => void saveManualConfig(provider)}
-				open={manualProviderID === provider.id}
-				provider={provider}
-				hint={hint}
-				variant={variant}
-			/>
+			<div id={providerRowElementID(provider.id)} key={provider.id}>
+				<ManualAPIKeyProviderRow
+					apiKey={apiKey}
+					baseURL={isAIHubMix ? aihubmixBaseURL : isSpeechAPI ? speechAPIBaseURL : undefined}
+					baseURLPlaceholder={isSpeechAPI ? "https://example.com/v1" : undefined}
+					model={isSpeechAPI ? speechAPIModel : undefined}
+					voice={isSpeechAPI ? speechAPIVoice : undefined}
+					isClearing={clearingID === provider.id}
+					isSaving={savingID === provider.id}
+					onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
+					onBaseURLChange={
+						isAIHubMix ? setAIHubMixBaseURL : isSpeechAPI ? setSpeechAPIBaseURL : undefined
+					}
+					onModelChange={isSpeechAPI ? setSpeechAPIModel : undefined}
+					onVoiceChange={isSpeechAPI ? setSpeechAPIVoice : undefined}
+					onClear={() => confirmClear(provider)}
+					onOpenChange={(open) => setManualProviderID(open ? provider.id : undefined)}
+					onSave={() =>
+						void (isAIHubMix
+							? saveAIHubMixConfig(provider)
+							: isSpeechAPI
+								? saveSpeechAPIConfig(provider)
+								: saveManualConfig(provider))
+					}
+					open={manualProviderID === provider.id}
+					provider={provider}
+					hint={hint}
+					variant={variant}
+				/>
+			</div>
 		);
+	};
+
+	const otherProviderIDs = new Set([
+		...customProviders.map((provider) => provider.id),
+		...officialProviders.map((provider) => provider.id),
+	]);
+	const selectProviderFromMatrix = (providerID: string, target: ProviderCapabilityTarget) => {
+		if (target === "codex-access") {
+			useSettingsNavigationStore.getState().setActiveTab("codex-access");
+			return;
+		}
+		if (otherProviderIDs.has(providerID)) {
+			setOtherProvidersExpanded(true);
+		}
+		window.requestAnimationFrame(() => {
+			document.getElementById(providerRowElementID(providerID))?.scrollIntoView({
+				behavior: "smooth",
+				block: "center",
+			});
+		});
 	};
 
 	const renderCustomProvider = (provider: APIKeyProvider) =>
@@ -450,50 +558,37 @@ const APIKeysPanel: React.FC = () => {
 	return (
 		<SettingsPanelLayout
 			title="API 密钥"
-			description="优先使用 MediaGo 聚合平台，也可通过会员 CLI 登录或供应商凭据接入。"
+			description="Agent、图片、音频、视频按 Provider 能力独立接入；统一 API 默认使用 AIHubMix，本地与会员通道继续保留。"
 			icon={<KeyRound className="size-4" />}
 		>
 			<div className="mx-auto w-full max-w-5xl divide-y divide-border">
+				<ProviderCapabilityMatrix
+					onSelectProvider={selectProviderFromMatrix}
+					providers={providers}
+				/>
 				{(isLoading || isModelPlatformsLoading) && providers.length === 0 ? (
 					<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
 						<Loader2 className="size-4 animate-spin" />
 						<span>加载中</span>
 					</div>
 				) : null}
-				{!isLoading && !mediagoProvider ? (
-					<section className="rounded-lg bg-background px-5 py-6">
-						<h3 className="text-sm font-semibold text-foreground">当前版本未启用 MediaGo</h3>
-						<p className="mt-2 text-sm leading-6 text-muted-foreground">
-							没有找到 MediaGo 凭据槽。请确认后端已返回 MediaGo API Key provider。
-						</p>
-					</section>
+				{aihubmixProvider ? (
+					<CredentialCategorySection
+						className="py-8"
+						title="统一接口（AIHubMix）"
+						description="默认模型网关。保存一个 AIHubMix API Key，用于当前已适配的文本生成与智能体模型；会员 CLI 通道继续使用。"
+					>
+						{renderManualProvider(aihubmixProvider, "custom")}
+					</CredentialCategorySection>
 				) : null}
-				{mediagoProvider ? (
-					<>
-						<MediagoCredentialPanel
-							modelGroups={mediagoModelGroups}
-							onConfigure={() => setMediagoDialogOpen(true)}
-							provider={mediagoProvider}
-						>
-							{visibleUnifiedProviders.length > 0 ? (
-								<div className="mt-4 space-y-3">
-									{visibleUnifiedProviders.map((provider) => renderProvider(provider))}
-								</div>
-							) : null}
-						</MediagoCredentialPanel>
-						<MediagoConfigDialog
-							apiKey={apiKeys[mediagoProvider.id] ?? ""}
-							isClearing={clearingID === mediagoProvider.id}
-							isSaving={savingID === mediagoProvider.id}
-							onAPIKeyChange={(value) => updateAPIKey(mediagoProvider.id, value)}
-							onClear={() => confirmClear(mediagoProvider)}
-							onOpenChange={setMediagoDialogOpen}
-							onRegister={() => void openMediagoAPIKeyPage()}
-							onSave={() => void saveMediagoQuickSetup()}
-							open={mediagoDialogOpen}
-							provider={mediagoProvider}
-						/>
-					</>
+				{speechAPIProvider ? (
+					<CredentialCategorySection
+						className="py-8"
+						title="音频接口（第三方 Speech API）"
+						description="OpenAI-compatible 文本转语音接口。可独立配置 Base URL、模型 ID、默认音色和 API Key，不影响 MiniMax 官方 TTS。"
+					>
+						{renderManualProvider(speechAPIProvider, "custom")}
+					</CredentialCategorySection>
 				) : null}
 				{cliProviders.length > 0 ? (
 					<CredentialCategorySection
@@ -550,7 +645,7 @@ const APIKeysPanel: React.FC = () => {
 	);
 };
 
-const platformProvider = (
+export const platformProvider = (
 	platforms: ModelPlatform[],
 	providersByID: Map<string, APIKeyProvider>,
 	platformID: string,
@@ -629,7 +724,7 @@ const CredentialCategorySection: React.FC<{
 	</section>
 );
 
-const MediagoCredentialPanel: React.FC<{
+export const MediagoCredentialPanel: React.FC<{
 	children?: React.ReactNode;
 	modelGroups?: ModelPlatformModelGroup[];
 	onConfigure: () => void;
@@ -685,7 +780,7 @@ const MediagoCredentialPanel: React.FC<{
 	);
 };
 
-const MediagoConfigDialog: React.FC<{
+export const MediagoConfigDialog: React.FC<{
 	apiKey: string;
 	isClearing: boolean;
 	isSaving: boolean;
@@ -930,9 +1025,16 @@ type ManualProviderVariant = "cli" | "custom" | "official";
 
 const ManualAPIKeyProviderRow: React.FC<{
 	apiKey: string;
+	baseURL?: string;
+	baseURLPlaceholder?: string;
+	model?: string;
+	voice?: string;
 	isClearing: boolean;
 	isSaving: boolean;
 	onAPIKeyChange: (value: string) => void;
+	onBaseURLChange?: (value: string) => void;
+	onModelChange?: (value: string) => void;
+	onVoiceChange?: (value: string) => void;
 	onClear: () => void;
 	onOpenChange: (open: boolean) => void;
 	onSave: () => void;
@@ -942,10 +1044,17 @@ const ManualAPIKeyProviderRow: React.FC<{
 	variant: ManualProviderVariant;
 }> = ({
 	apiKey,
+	baseURL,
+	baseURLPlaceholder,
+	model,
+	voice,
 	hint,
 	isClearing,
 	isSaving,
 	onAPIKeyChange,
+	onBaseURLChange,
+	onModelChange,
+	onVoiceChange,
 	onClear,
 	onOpenChange,
 	onSave,
@@ -988,8 +1097,15 @@ const ManualAPIKeyProviderRow: React.FC<{
 			</section>
 			<ManualProviderConfigDialog
 				apiKey={apiKey}
+				baseURL={baseURL}
+				baseURLPlaceholder={baseURLPlaceholder}
+				model={model}
+				voice={voice}
 				isSaving={isSaving}
 				onAPIKeyChange={onAPIKeyChange}
+				onBaseURLChange={onBaseURLChange}
+				onModelChange={onModelChange}
+				onVoiceChange={onVoiceChange}
 				onOpenChange={onOpenChange}
 				onSave={onSave}
 				open={open}
@@ -1003,8 +1119,15 @@ const ManualAPIKeyProviderRow: React.FC<{
 
 const ManualProviderConfigDialog: React.FC<{
 	apiKey: string;
+	baseURL?: string;
+	baseURLPlaceholder?: string;
+	model?: string;
+	voice?: string;
 	isSaving: boolean;
 	onAPIKeyChange: (value: string) => void;
+	onBaseURLChange?: (value: string) => void;
+	onModelChange?: (value: string) => void;
+	onVoiceChange?: (value: string) => void;
 	onOpenChange: (open: boolean) => void;
 	onSave: () => void;
 	open: boolean;
@@ -1013,8 +1136,15 @@ const ManualProviderConfigDialog: React.FC<{
 	variantLabel: string;
 }> = ({
 	apiKey,
+	baseURL,
+	baseURLPlaceholder,
+	model,
+	voice,
 	isSaving,
 	onAPIKeyChange,
+	onBaseURLChange,
+	onModelChange,
+	onVoiceChange,
 	onOpenChange,
 	onSave,
 	open,
@@ -1044,11 +1174,15 @@ const ManualProviderConfigDialog: React.FC<{
 							配置 {provider.label}
 						</h3>
 						<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-							{variant === "custom"
-								? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
-								: variant === "cli"
-									? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
-									: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
+							{model !== undefined || voice !== undefined
+								? "配置 OpenAI-compatible Base URL、模型 ID、默认音色和 API Key。"
+								: baseURL !== undefined
+									? "配置 OpenAI-compatible Base URL 和 API Key；保存后 MediaGo Agent Core 会自动读取可用模型。"
+									: variant === "custom"
+										? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
+										: variant === "cli"
+											? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
+											: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
 						</p>
 					</div>
 					<span className="rounded-full bg-ide-list-hover px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -1056,7 +1190,53 @@ const ManualProviderConfigDialog: React.FC<{
 					</span>
 				</div>
 
-				<div className="mt-6">
+				<div className="mt-6 space-y-4">
+					{baseURL !== undefined && onBaseURLChange ? (
+						<div className="grid gap-2">
+							<Label
+								htmlFor={`${inputID}-base-url`}
+								className="text-sm font-medium text-foreground"
+							>
+								Base URL
+							</Label>
+							<Input
+								id={`${inputID}-base-url`}
+								aria-label={`${provider.label} Base URL`}
+								className="h-10 rounded-md font-mono text-sm text-foreground"
+								value={baseURL}
+								onChange={(event) => onBaseURLChange(event.target.value)}
+								placeholder={baseURLPlaceholder || "https://aihubmix.com/v1"}
+							/>
+						</div>
+					) : null}
+					{model !== undefined && onModelChange ? (
+						<div className="grid gap-2">
+							<Label htmlFor={`${inputID}-model`} className="text-sm font-medium text-foreground">
+								模型 ID
+							</Label>
+							<Input
+								id={`${inputID}-model`}
+								value={model}
+								onChange={(event) => onModelChange(event.target.value)}
+								placeholder="gpt-4o-mini-tts"
+								className="h-10 rounded-md font-mono text-sm text-foreground"
+							/>
+						</div>
+					) : null}
+					{voice !== undefined && onVoiceChange ? (
+						<div className="grid gap-2">
+							<Label htmlFor={`${inputID}-voice`} className="text-sm font-medium text-foreground">
+								默认音色
+							</Label>
+							<Input
+								id={`${inputID}-voice`}
+								value={voice}
+								onChange={(event) => onVoiceChange(event.target.value)}
+								placeholder="alloy"
+								className="h-10 rounded-md font-mono text-sm text-foreground"
+							/>
+						</div>
+					) : null}
 					<div className="grid gap-2">
 						<Label htmlFor={inputID} className="text-sm font-medium text-foreground">
 							{provider.credentialLabel || "API Key"}
@@ -1085,7 +1265,7 @@ const ManualProviderConfigDialog: React.FC<{
 						</DialogDismissButton>
 						<Button
 							type="button"
-							disabled={!apiKey.trim() || isSaving}
+							disabled={isSaving || (baseURL !== undefined ? !baseURL.trim() : !apiKey.trim())}
 							onClick={onSave}
 							className="w-24 rounded-md"
 						>

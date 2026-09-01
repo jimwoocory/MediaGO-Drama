@@ -123,18 +123,40 @@ func (store *AgentBackendService) ActiveArgv() []string {
 
 	store.mu.RLock()
 	activeID := store.activeID
-	binDir := store.binDir
-	command := store.activeCommandLocked()
 	store.mu.RUnlock()
+	return store.ArgvForBackend(activeID)
+}
 
-	if strings.TrimSpace(binDir) != "" && strings.TrimSpace(activeID) != "" {
-		if manifest, err := loadAgentManifest(binDir, activeID); err == nil {
-			if argv := manifestArgv(binDir, activeID, manifest); len(argv) > 0 {
+// ArgvForBackend returns the executable argv for a specific configured backend.
+func (store *AgentBackendService) ArgvForBackend(id string) []string {
+	id = strings.TrimSpace(id)
+	if store == nil {
+		if id == "" || id == defaultAgentBackendID {
+			return splitAgentBackendCommand(defaultAgentBackendCommand)
+		}
+		return nil
+	}
+
+	store.mu.RLock()
+	binDir := store.binDir
+	command := ""
+	for _, backend := range store.backends {
+		if backend.ID == id {
+			command = strings.TrimSpace(backend.Command)
+			break
+		}
+	}
+	store.mu.RUnlock()
+	if command == "" {
+		return nil
+	}
+	if strings.TrimSpace(binDir) != "" {
+		if manifest, err := loadAgentManifest(binDir, id); err == nil {
+			if argv := manifestArgv(binDir, id, manifest); len(argv) > 0 {
 				return argv
 			}
 		}
 	}
-
 	return splitAgentBackendCommand(command)
 }
 
@@ -143,20 +165,30 @@ func (store *AgentBackendService) ActiveEnv() map[string]string {
 	if store == nil {
 		return map[string]string{}
 	}
-
 	store.mu.RLock()
 	activeID := store.activeID
-	binDir := store.binDir
 	store.mu.RUnlock()
-	if strings.TrimSpace(binDir) == "" || strings.TrimSpace(activeID) == "" {
+	return store.EnvForBackend(activeID)
+}
+
+// EnvForBackend returns environment variables required by a specific vendored backend.
+func (store *AgentBackendService) EnvForBackend(id string) map[string]string {
+	if store == nil {
 		return map[string]string{}
 	}
-	manifest, err := loadAgentManifest(binDir, activeID)
+	id = strings.TrimSpace(id)
+	store.mu.RLock()
+	binDir := store.binDir
+	store.mu.RUnlock()
+	if strings.TrimSpace(binDir) == "" || id == "" {
+		return map[string]string{}
+	}
+	manifest, err := loadAgentManifest(binDir, id)
 	if err != nil || manifest.CodexBin == "" {
 		return map[string]string{}
 	}
 	return map[string]string{
-		"CODEX_PATH": filepath.Join(binDir, activeID, manifest.CodexBin),
+		"CODEX_PATH": filepath.Join(binDir, id, manifest.CodexBin),
 	}
 }
 
@@ -208,16 +240,16 @@ func builtinAgentBackends() []AgentBackend {
 	return []AgentBackend{
 		{
 			ID:          defaultAgentBackendID,
-			Name:        "Codex",
+			Name:        "Codex Harness",
 			Command:     defaultAgentBackendCommand,
-			Description: "默认 Codex ACP 后端。",
+			Description: "Codex Harness 智能体后端。",
 			IsBuiltin:   true,
 		},
 		{
 			ID:          "opencode",
-			Name:        "OpenCode",
+			Name:        "MediaGo Agent Core",
 			Command:     "opencode acp",
-			Description: "OpenCode ACP 后端。",
+			Description: "AIHubMix 等兼容模型使用 Agent Core；DeepSeek 经独立 Harness Adapter 路径接入。",
 			IsBuiltin:   true,
 		},
 	}

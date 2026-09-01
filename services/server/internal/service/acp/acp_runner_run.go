@@ -18,7 +18,7 @@ func (runner *acpAgentRunner) Run(ctx context.Context, request agentRunRequest, 
 func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunRequest, publish func(agentEvent)) (agentRunResult, error) {
 	publish = scopedACPEventPublisher(request.RunID, publish)
 	runStartedAt := time.Now()
-	command, args := runner.activeCommandArgv()
+	command, args := runner.activeCommandArgvForModel(request.Model.Value)
 	workspaceDir := runner.absoluteWorkspaceDir()
 	runDir := runner.absoluteRunDir(request)
 	if runDir != "." {
@@ -381,6 +381,13 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		promptStartedAt = time.Now()
 		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest, invalidateCancelledProcess)
 	}
+	if err != nil && client.toolLoopGuardReason() != "" {
+		reason := client.toolLoopGuardReason()
+		acpLog().Warn("acp tool loop guard forced finalization", append(logArgs, "acp_session_id", sessionID, "reason", reason)...)
+		publish(agentEvent{Type: "agent.activity", Message: "工具调用已停止，正在安全收尾：" + reason})
+		err = nil
+		promptResponse = acp.PromptResponse{StopReason: acp.StopReasonEndTurn}
+	}
 	if err != nil {
 		acpLog().Error("acp prompt failed", append(logArgs, "acp_session_id", sessionID, "duration_ms", time.Since(promptStartedAt).Milliseconds(), "error", err)...)
 		if alert := runtimeAlertForACPPromptError(err, ctx.Err()); alert != nil {
@@ -404,7 +411,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	}
 	requestedFinalMessage := false
 	hadActivityBeforeFinalMessage := false
-	if shouldRequestACPFinalMessage(promptResponse, client.messageItemText(), client.runtimeErrorText(), client.hasPromptActivity()) {
+	if client.toolLoopGuardReason() == "" && shouldRequestACPFinalMessage(promptResponse, client.messageItemText(), client.runtimeErrorText(), client.hasPromptActivity()) {
 		requestedFinalMessage = true
 		hadActivityBeforeFinalMessage = true
 		publish(agentEvent{
@@ -454,10 +461,19 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		}
 	}
 
+	if carry := client.flushDSMLCarry(); carry != "" {
+		client.appendMessage(carry, client.messageItemID())
+	}
 	rawFinalMessage := client.messageText()
 	rawFinalItem := client.messageItemText()
 	final := parseACPFinalResponseForItem(rawFinalMessage, rawFinalItem, request)
-	if strings.TrimSpace(rawFinalItem) == "" {
+	if reason := client.toolLoopGuardReason(); reason != "" {
+		if strings.TrimSpace(final.Message) == "" {
+			final.Message = "已达到工具调用安全上限，已停止继续调用工具并安全结束本轮。"
+		}
+		final.Message = strings.TrimSpace(final.Message) + "\n\n（安全保护：" + reason + "）"
+	}
+	if strings.TrimSpace(rawFinalItem) == "" && client.toolLoopGuardReason() == "" {
 		if runtimeError := client.runtimeErrorText(); runtimeError != "" {
 			final.Message = runtimeError
 		} else if fallback := fallbackACPFinalMessage(request, requestedFinalMessage || hadActivityBeforeFinalMessage); fallback != "" {

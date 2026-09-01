@@ -27,8 +27,9 @@ func MediaGoDramaMCPToolName(toolName string) string {
 
 // PromptBuildOptions supplies fixed prompt rendering options.
 type PromptBuildOptions struct {
-	MaxSectionChars int
-	Skills          []SkillDescriptor
+	MaxSectionChars   int
+	Skills            []SkillDescriptor
+	ProductionContext string
 }
 
 // SkillDescriptor is the lightweight Skill metadata loaded when an Agent starts.
@@ -74,6 +75,10 @@ func BuildACPPrompt(_ AgentRunRequest, options PromptBuildOptions) string {
 	}
 	if skillIndex := renderSkillIndex(options.Skills); skillIndex != "" {
 		builder.WriteString(truncatePromptContent("SKILLS", skillIndex, maxSectionChars))
+		builder.WriteString("\n\n")
+	}
+	if productionContext := strings.TrimSpace(options.ProductionContext); productionContext != "" {
+		builder.WriteString(truncatePromptContent("PRODUCTION", productionContext, maxSectionChars))
 		builder.WriteString("\n\n")
 	}
 	return strings.TrimRight(builder.String(), "\n") + "\n"

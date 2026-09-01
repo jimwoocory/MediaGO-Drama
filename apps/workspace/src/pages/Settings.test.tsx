@@ -6,8 +6,10 @@ import {
 	beginProviderLogin,
 	clearAPIKey,
 	completeProviderLogin,
+	getAIHubMixSettings,
 	getAPIKeys,
 	getModelPlatforms,
+	saveAIHubMixSettings,
 	saveAPIKey,
 	type APIKeyLoginChallenge,
 	type APIKeyListResponse,
@@ -39,9 +41,11 @@ vi.mock("@/domains/settings/api/settings", async (importOriginal) => {
 		beginProviderLogin: vi.fn(),
 		clearAPIKey: vi.fn(),
 		completeProviderLogin: vi.fn(),
+		getAIHubMixSettings: vi.fn(),
 		getAPIKeys: vi.fn(),
 		getJianyingDraftSettings: vi.fn(),
 		getModelPlatforms: vi.fn(),
+		saveAIHubMixSettings: vi.fn(),
 		saveAPIKey: vi.fn(),
 		saveJianyingDraftSettings: vi.fn(),
 	};
@@ -69,8 +73,10 @@ describe("Settings API key page", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		useSettingsNavigationStore.setState({ activeTab: "api-keys" });
+		vi.mocked(getAIHubMixSettings).mockResolvedValue({ baseURL: "https://aihubmix.com/v1" });
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({}));
 		vi.mocked(getModelPlatforms).mockResolvedValue(modelPlatformsResponse());
+		vi.mocked(saveAIHubMixSettings).mockResolvedValue({ baseURL: "https://aihubmix.com/v1" });
 		vi.mocked(saveAPIKey).mockResolvedValue(apiKeysResponse({ mediagoConfigured: true }));
 	});
 
@@ -78,90 +84,56 @@ describe("Settings API key page", () => {
 		cleanup();
 	});
 
-	it("shows MediaGo hero and CLI section, keeps other providers collapsed", async () => {
+	it("shows the Provider framework with AIHubMix as the unified default", async () => {
 		renderSettings();
 
-		expect(await screen.findByRole("heading", { name: "统一接口" })).toBeInTheDocument();
-		expect(screen.getByText("一个 API Key，通用全部生成模型")).toBeInTheDocument();
-		expect(screen.getAllByText("推荐")).toHaveLength(1);
-
-		expect(screen.getByRole("heading", { name: "会员 CLI 接入" })).toBeInTheDocument();
-		expect(
-			screen.getByText("已开通即梦高级会员？可直接登录即梦账号接入，无需 API Key。"),
-		).toBeInTheDocument();
-		expect(screen.getByText("即梦")).toBeInTheDocument();
-
-		expect(screen.getByRole("button", { name: /其他接入方式/ })).toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "自定义接口" })).not.toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "模型提供方与能力" })).toBeInTheDocument();
+		expect(screen.getByText("Codex")).toBeInTheDocument();
+		expect(screen.getByText("ChatGPT OAuth")).toBeInTheDocument();
+		expect(screen.getByText("后台备用")).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "统一接口（AIHubMix）" })).toBeInTheDocument();
+		expect(screen.getByText(/统一 API 默认使用 AIHubMix/)).toBeInTheDocument();
 	});
+	it("keeps the capability matrix independent from credential rows", async () => {
+		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ aihubmixConfigured: true }));
 
-	it("does not show aggregation providers omitted from the build allowlist", async () => {
-		vi.mocked(getAPIKeys).mockResolvedValue(
-			apiKeysResponse({ mediagoConfigured: true, openrouterConfigured: true }),
+		renderSettings();
+
+		expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
+		expect(screen.getByText(/已真实接入的能力/)).toBeInTheDocument();
+		expect(screen.getByText("sk••••••456")).toBeInTheDocument();
+	});
+	it("loads AIHubMix Base URL in its independent configuration dialog", async () => {
+		vi.mocked(getAIHubMixSettings).mockResolvedValue({
+			baseURL: "https://gateway.example.test/v1",
+		});
+
+		renderSettings();
+
+		fireEvent.click(await screen.findByRole("button", { name: "编辑 AIHubMix" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 AIHubMix" });
+		expect(within(dialog).getByLabelText("AIHubMix Base URL")).toHaveValue(
+			"https://gateway.example.test/v1",
 		);
+		expect(within(dialog).getByLabelText("AIHubMix API Key")).toBeInTheDocument();
+	});
+	it("does not mark unconfigured third-party providers as configured", async () => {
+		renderSettings();
+
+		expect(await screen.findByText("Codex")).toBeInTheDocument();
+		expect(screen.queryByText("凭据已配置")).not.toBeInTheDocument();
+		expect(screen.getAllByText("AIHubMix").length).toBeGreaterThan(0);
+		expect(screen.getByText("DeepSeek")).toBeInTheDocument();
+	});
+	it("keeps the Provider framework visible when the model-platform allowlist is empty", async () => {
 		vi.mocked(getModelPlatforms).mockResolvedValue({ platforms: [] });
 
 		renderSettings();
 
-		expect(
-			await screen.findByRole("heading", { name: "当前版本未启用 MediaGo" }),
-		).toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "统一接口" })).not.toBeInTheDocument();
-		fireEvent.click(screen.getByRole("button", { name: /其他接入方式/ }));
-		expect(screen.queryByText("OpenRouter")).not.toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "模型提供方与能力" })).toBeInTheDocument();
+		expect(screen.getByText("Codex")).toBeInTheDocument();
+		expect(screen.getAllByText("AIHubMix").length).toBeGreaterThan(0);
 	});
-
-	it("renders MediaGo model chips from platform data", async () => {
-		renderSettings();
-
-		expect(await screen.findByText("支持模型")).toBeInTheDocument();
-		expect(screen.getByText("MiniMax M3")).toBeInTheDocument();
-		expect(screen.getByText("GLM 4.7")).toBeInTheDocument();
-	});
-
-	it("keeps Wan and supported HappyHorse variants visible after the model chip limit", async () => {
-		vi.mocked(getModelPlatforms).mockResolvedValue(
-			modelPlatformsResponse({
-				mediagoModels: [
-					"GPT Image 2",
-					"Gemini 2.5 Flash Image",
-					"Gemini 3.1 Flash Lite Image",
-					"Gemini 3 Pro Image",
-					"Gemini 2.5 Flash",
-					"Gemini 3.1 Flash Image",
-					"Gemini 3.5 Flash",
-					"Gemini 3.1 Pro Preview",
-					"Wan 2.7 Image",
-					"Wan 2.7 Image Pro",
-					"HappyHorse 1.1 Text to Video",
-					"HappyHorse 1.1 Image to Video",
-					"HappyHorse 1.1 Reference to Video",
-				],
-			}),
-		);
-
-		renderSettings();
-
-		expect(await screen.findByText("Wan 2.7 Image")).toBeInTheDocument();
-		expect(screen.getByText("Wan 2.7 Image Pro")).toBeInTheDocument();
-		expect(screen.getByText("HappyHorse 1.1 Text to Video")).toBeInTheDocument();
-		expect(screen.getByText("HappyHorse 1.1 Reference to Video")).toBeInTheDocument();
-		expect(screen.queryByText("HappyHorse 1.1 Image to Video")).not.toBeInTheDocument();
-		expect(screen.getByText("等 13 个模型")).toBeInTheDocument();
-	});
-
-	it("expands other providers on demand", async () => {
-		renderSettings();
-
-		fireEvent.click(await screen.findByRole("button", { name: /其他接入方式/ }));
-
-		expect(screen.getByRole("heading", { name: "自定义接口" })).toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "官方供应商" })).toBeInTheDocument();
-		expect(screen.getByText("OpenRouter")).toBeInTheDocument();
-		expect(screen.queryByText("openrouter")).not.toBeInTheDocument();
-	});
-
 	it("keeps other providers collapsed by default even when one is configured", async () => {
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ openrouterConfigured: true }));
 		renderSettings();
@@ -171,44 +143,56 @@ describe("Settings API key page", () => {
 		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
 	});
 
-	it("opens the MediaGo API key page from the config dialog", async () => {
+	it("saves AIHubMix Base URL and API key together", async () => {
+		vi.mocked(saveAIHubMixSettings).mockResolvedValue({
+			baseURL: "https://gateway.example.test/v1",
+		});
+		vi.mocked(saveAPIKey).mockResolvedValue(apiKeysResponse({ aihubmixConfigured: true }));
+
 		renderSettings();
 
-		fireEvent.click(await screen.findByRole("button", { name: /配置 API Key/ }));
-		fireEvent.click(await screen.findByRole("button", { name: /免费注册获取/ }));
+		fireEvent.click(await screen.findByRole("button", { name: "编辑 AIHubMix" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 AIHubMix" });
+		fireEvent.change(within(dialog).getByLabelText("AIHubMix Base URL"), {
+			target: { value: "https://gateway.example.test/v1" },
+		});
+		fireEvent.change(within(dialog).getByLabelText("AIHubMix API Key"), {
+			target: { value: "sk-aihubmix-123456" },
+		});
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
 
-		expect(openExternalUrl).toHaveBeenCalledWith(expect.stringContaining("apiKeys"));
-	});
-
-	it("saves the MediaGo key from the config dialog", async () => {
-		renderSettings();
-
-		fireEvent.click(await screen.findByRole("button", { name: /配置 API Key/ }));
-		const dialog = await screen.findByRole("dialog", { name: "配置 MediaGo API Key" });
-		const input = within(dialog).getByLabelText("MediaGo API Key") as HTMLInputElement;
-		fireEvent.change(input, { target: { value: "sk-mediago-123456" } });
-
-		expect(screen.getByText("API Key 已输入，可以点击一键配置完成保存。")).toBeInTheDocument();
-		fireEvent.click(within(dialog).getByRole("button", { name: "一键配置" }));
-
-		await waitFor(() => expect(saveAPIKey).toHaveBeenCalledWith("mediago", "sk-mediago-123456"));
+		await waitFor(() =>
+			expect(saveAIHubMixSettings).toHaveBeenCalledWith("https://gateway.example.test/v1"),
+		);
+		expect(saveAPIKey).toHaveBeenCalledWith("aihubmix", "sk-aihubmix-123456");
 		expectModelDependentCachesRevalidated();
 	});
+	it("keeps AIHubMix unconfigured when only its endpoint is saved", async () => {
+		renderSettings();
 
-	it("refreshes model-dependent caches after clearing a credential", async () => {
-		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ mediagoConfigured: true }));
+		fireEvent.click(await screen.findByRole("button", { name: "编辑 AIHubMix" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 AIHubMix" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+
+		await waitFor(() =>
+			expect(saveAIHubMixSettings).toHaveBeenCalledWith("https://aihubmix.com/v1"),
+		);
+		expect(saveAPIKey).not.toHaveBeenCalled();
+		expect(screen.queryByText("sk••••••456")).not.toBeInTheDocument();
+	});
+	it("clears an AIHubMix credential only after confirmation", async () => {
+		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ aihubmixConfigured: true }));
 		vi.mocked(clearAPIKey).mockResolvedValue(apiKeysResponse({}));
 		renderSettings();
 
-		fireEvent.click(await screen.findByRole("button", { name: /管理 API Key/ }));
-		fireEvent.click(await screen.findByRole("button", { name: "清除当前 Key" }));
+		fireEvent.click(await screen.findByRole("button", { name: "AIHubMix 更多操作" }));
+		fireEvent.click(await screen.findByRole("menuitem", { name: "清除 API Key" }));
 		expect(clearAPIKey).not.toHaveBeenCalled();
 		fireEvent.click(await screen.findByRole("button", { name: "清除 API Key" }));
 
-		await waitFor(() => expect(clearAPIKey).toHaveBeenCalledWith("mediago"));
+		await waitFor(() => expect(clearAPIKey).toHaveBeenCalledWith("aihubmix"));
 		expectModelDependentCachesRevalidated();
 	});
-
 	it("clears a configured API key from the row menu only after confirmation", async () => {
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ openrouterConfigured: true }));
 		vi.mocked(clearAPIKey).mockResolvedValue(apiKeysResponse({}));
@@ -483,17 +467,29 @@ const renderSettings = () =>
 	);
 
 const apiKeysResponse = ({
+	aihubmixConfigured = false,
 	includeExtraCLI = false,
 	libtvConfigured = false,
 	mediagoConfigured = false,
 	openrouterConfigured = false,
 }: {
+	aihubmixConfigured?: boolean;
 	includeExtraCLI?: boolean;
 	libtvConfigured?: boolean;
 	mediagoConfigured?: boolean;
 	openrouterConfigured?: boolean;
 }): APIKeyListResponse => ({
 	providers: [
+		{
+			id: "aihubmix",
+			label: "AIHubMix",
+			description: "OpenAI-compatible Agent gateway",
+			configured: aihubmixConfigured,
+			source: aihubmixConfigured ? "settings" : "none",
+			masked: aihubmixConfigured ? "sk••••••456" : undefined,
+			credentialKind: "apiKey",
+			capabilities: ["text"],
+		},
 		{
 			id: "mediago",
 			label: "MediaGo聚合平台",

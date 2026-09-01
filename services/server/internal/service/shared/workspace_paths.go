@@ -54,17 +54,25 @@ type AgentConfigFile struct {
 
 // ProjectManifestFile is a project's local manifest shape.
 type ProjectManifestFile struct {
-	SchemaVersion int                         `json:"schemaVersion"`
-	ProjectID     string                      `json:"projectId"`
-	Name          string                      `json:"name"`
-	Description   string                      `json:"description"`
-	Overview      ProjectManifestOverviewFile `json:"overview"`
-	CreatedAt     string                      `json:"createdAt"`
+	SchemaVersion int                           `json:"schemaVersion"`
+	ProjectID     string                        `json:"projectId"`
+	Name          string                        `json:"name"`
+	Description   string                        `json:"description"`
+	Overview      ProjectManifestOverviewFile   `json:"overview"`
+	Production    ProjectManifestProductionFile `json:"production"`
+	CreatedAt     string                        `json:"createdAt"`
 }
 
 // ProjectManifestOverviewFile is the overview config stored in project.media.json.
 type ProjectManifestOverviewFile struct {
 	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty"`
+}
+
+// ProjectManifestProductionFile is the production planning selection stored in project.media.json.
+type ProjectManifestProductionFile struct {
+	SchemaVersion         int     `json:"schemaVersion"`
+	ProfileID             string  `json:"profileId,omitempty"`
+	TargetDurationSeconds float64 `json:"targetDurationSeconds,omitempty"`
 }
 
 // UnmarshalJSON accepts project files written with the legacy layerDefaults key.
@@ -137,6 +145,11 @@ func NormalizeProjectManifestFile(project mediamcp.Project, current ProjectManif
 		Overview: ProjectManifestOverviewFile{
 			CategoryDefaults: normalizeProjectManifestCategoryDefaults(current.Overview.CategoryDefaults),
 		},
+		Production: ProjectManifestProductionFile{
+			SchemaVersion:         1,
+			ProfileID:             strings.TrimSpace(current.Production.ProfileID),
+			TargetDurationSeconds: current.Production.TargetDurationSeconds,
+		},
 		CreatedAt: createdAt,
 	}
 }
@@ -171,19 +184,45 @@ func ResolveWorkspaceDir(workspaceDir string) string {
 	if dir == "" {
 		return defaultWorkspaceDir()
 	}
-	if strings.HasPrefix(dir, "~/") || dir == "~" {
-		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
-			if dir == "~" {
-				dir = homeDir
-			} else {
-				dir = filepath.Join(homeDir, strings.TrimPrefix(dir, "~/"))
-			}
-		}
+	if expanded, ok := expandUserHomeDir(dir); ok {
+		dir = expanded
 	}
 	if absDir, err := filepath.Abs(dir); err == nil {
 		dir = absDir
 	}
 	return filepath.Clean(dir)
+}
+
+func expandUserHomeDir(dir string) (string, bool) {
+	switch {
+	case dir == "~":
+		homeDir := lookupUserHomeDir()
+		if homeDir == "" {
+			return dir, false
+		}
+		return homeDir, true
+	case strings.HasPrefix(dir, "~/"), strings.HasPrefix(dir, `~\`):
+		homeDir := lookupUserHomeDir()
+		if homeDir == "" {
+			return dir, false
+		}
+		return filepath.Join(homeDir, strings.TrimPrefix(strings.TrimPrefix(dir, "~/"), `~\`)), true
+	default:
+		return dir, false
+	}
+}
+
+func lookupUserHomeDir() string {
+	for _, key := range []string{"HOME", "USERPROFILE"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(homeDir)
 }
 
 func defaultWorkspaceDir() string {

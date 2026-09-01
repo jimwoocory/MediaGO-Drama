@@ -31,6 +31,7 @@ import (
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
+	serviceproductionprofile "github.com/mediago-dev/mediago-drama/services/server/internal/service/productionprofile"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	serviceprompt "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompt"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
@@ -57,8 +58,12 @@ func newAPIHandler(config Config) *apiHandler {
 	}
 
 	backendService := serviceagent.NewAgentBackendServiceWithBinDir(config.ACPCommand, config.AgentBinDir, config.AgentID)
+	productionProfiles := serviceproductionprofile.MustBuiltinRegistry()
+	var skillRegistry *serviceskill.Registry
 	buildPrompt := func(request agentRunRequest) string {
-		return buildACPPromptWithMaxSectionChars(request, config.PromptMaxSectionChars)
+		options := promptBuildOptionsWithSkillRegistry(request, config.PromptMaxSectionChars, skillRegistry)
+		options.ProductionContext = productionPlanningContext(workspaceState, productionProfiles, request.ProjectID)
+		return serviceprompt.BuildACPPrompt(request, options)
 	}
 	runner := config.agentRunner
 	if runner == nil {
@@ -70,6 +75,13 @@ func newAPIHandler(config Config) *apiHandler {
 			backendService.ActiveCommand,
 			backendService.ActiveArgv,
 		)
+	}
+	if modelRoutable, ok := runner.(interface {
+		SetModelBackendArgvResolver(func(string) []string)
+	}); ok {
+		modelRoutable.SetModelBackendArgvResolver(func(modelValue string) []string {
+			return backendService.ArgvForBackend(agentBackendIDForRuntimeModel(modelValue))
+		})
 	}
 	// 会话回顾数据源：续接对话的 ACP 会话无法复用（换模型/上游会话失效）时，
 	// runner 用它取本会话聊天记录和已确认的选择决定，回放进重建会话的 prompt。
@@ -171,7 +183,7 @@ func newAPIHandler(config Config) *apiHandler {
 				if err != nil {
 					return serviceacp.ProcessConfig{}, err
 				}
-				env := mergeACPProcessEnv(codexConfig.Env, backendService.ActiveEnv())
+				env := mergeACPProcessEnv(codexConfig.Env, backendService.EnvForBackend("codex"))
 				if nativeInstructions {
 					env, err = withCodexDeveloperInstructions(env, request.FixedInstructions)
 					if err != nil {
@@ -277,7 +289,7 @@ func newAPIHandler(config Config) *apiHandler {
 		}
 	}
 	serviceskill.SetPromptPackStore(promptPack)
-	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
+	skillRegistry = serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
 	generationService.SetStylePromptLibrary(promptLibrary)
 	for _, extension := range config.RuntimeExtensions {
@@ -310,33 +322,34 @@ func newAPIHandler(config Config) *apiHandler {
 			workspaceReposErr,
 			protectedPackImporterErr,
 		),
-		workspaceState:    workspaceState,
-		events:            events,
-		workspaceEvents:   workspaceEvents,
-		agentSessions:     agentSessions,
-		agentRunner:       runner,
-		documentRunner:    documentRunner,
-		agentRunTimeout:   agentRunTimeout,
-		agentBridgeURL:    agentBridgeURL,
-		agentBridgeToken:  agentBridgeToken,
-		settings:          settings,
-		capability:        capabilityService,
-		billing:           billingService,
-		backendService:    backendService,
-		generation:        generationService,
-		selection:         selectionService,
-		jianyingDraft:     jianyingDraft,
-		mediaAssets:       mediaAssets,
-		previewStreamer:   previewStreamer,
-		projectAssets:     projectAssets,
-		promptPack:        promptPack,
-		promptTemplates:   promptTemplates,
-		promptLibrary:     promptLibrary,
-		skillRegistry:     skillRegistry,
-		codexSkills:       codexSkills,
-		runtimeExtensions: append([]RuntimeExtension(nil), config.RuntimeExtensions...),
-		shutdownCtx:       shutdownCtx,
-		shutdownCancel:    shutdownCancel,
+		workspaceState:     workspaceState,
+		events:             events,
+		workspaceEvents:    workspaceEvents,
+		agentSessions:      agentSessions,
+		agentRunner:        runner,
+		documentRunner:     documentRunner,
+		agentRunTimeout:    agentRunTimeout,
+		agentBridgeURL:     agentBridgeURL,
+		agentBridgeToken:   agentBridgeToken,
+		settings:           settings,
+		capability:         capabilityService,
+		billing:            billingService,
+		backendService:     backendService,
+		generation:         generationService,
+		selection:          selectionService,
+		jianyingDraft:      jianyingDraft,
+		mediaAssets:        mediaAssets,
+		previewStreamer:    previewStreamer,
+		projectAssets:      projectAssets,
+		productionProfiles: productionProfiles,
+		promptPack:         promptPack,
+		promptTemplates:    promptTemplates,
+		promptLibrary:      promptLibrary,
+		skillRegistry:      skillRegistry,
+		codexSkills:        codexSkills,
+		runtimeExtensions:  append([]RuntimeExtension(nil), config.RuntimeExtensions...),
+		shutdownCtx:        shutdownCtx,
+		shutdownCancel:     shutdownCancel,
 	}
 	handler.agentRuntime = serviceagent.NewAgentRuntime(
 		workspaceState.StateService().Documents,
@@ -405,6 +418,35 @@ func newAPIHandler(config Config) *apiHandler {
 		},
 	)
 	return handler
+}
+
+func mediaGoAgentCoreProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "mediago", "aihubmix", "dmxapi", "openrouter", "openai", "minimax-cn":
+		return true
+	default:
+		return false
+	}
+}
+
+func deepSeekHarnessAdapterProvider(provider string) bool {
+	return strings.EqualFold(strings.TrimSpace(provider), "deepseek")
+}
+
+func agentBackendIDForRuntimeModel(modelValue string) string {
+	provider, _, hasProvider := strings.Cut(strings.TrimSpace(modelValue), "/")
+	if !hasProvider {
+		return "codex"
+	}
+	if deepSeekHarnessAdapterProvider(provider) {
+		// DeepSeek has its own compatibility adapter path and must never fall
+		// through to the Codex Harness.
+		return "opencode"
+	}
+	if mediaGoAgentCoreProvider(provider) {
+		return "opencode"
+	}
+	return "codex"
 }
 
 func mergeACPProcessEnv(base map[string]string, overrides map[string]string) map[string]string {

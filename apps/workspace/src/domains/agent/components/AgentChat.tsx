@@ -3,9 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
-	agentBackendsKey,
 	agentRuntimeConfigKey,
-	getAgentBackends,
 	getAgentRuntimeConfig,
 	type AgentReference,
 	type AgentRuntimeConfigPayload,
@@ -112,9 +110,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	} = useSWR(runtimeConfigKey, () => getAgentRuntimeConfig(projectId), {
 		revalidateOnFocus: false,
 		shouldRetryOnError: false,
-	});
-	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends, {
-		revalidateOnFocus: false,
 	});
 	const isAgentPersistenceHydrated = useAgentPersistenceHydrated();
 	const resolvedRuntimeConfig = isAgentPersistenceHydrated ? runtimeConfig : undefined;
@@ -310,7 +305,9 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	};
 
 	const openRuntimeSettings = () => {
-		setSettingsTab((agentBackends?.activeId ?? "codex") === "codex" ? "codex-access" : "api-keys");
+		const persistedModel =
+			persistedRuntimeConfig?.model ?? persistedRuntimeConfigDefaults.model ?? selectedModel;
+		setSettingsTab(agentRuntimeSettingsTab(persistedModel));
 		navigate("/settings");
 	};
 
@@ -389,6 +386,22 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 };
 
 type RuntimeConfigSelection = ReturnType<typeof buildRuntimeConfigSelection>;
+
+const agentCoreProviderIDs = new Set([
+	"aihubmix",
+	"deepseek",
+	"dmxapi",
+	"mediago",
+	"minimax-cn",
+	"openai",
+	"openrouter",
+]);
+
+const agentRuntimeSettingsTab = (modelValue: string) => {
+	const [provider, model] = modelValue.trim().split("/", 2);
+	if (!provider || !model) return "codex-access";
+	return agentCoreProviderIDs.has(provider.toLowerCase()) ? "api-keys" : "codex-access";
+};
 
 const OPENCODE_THINKING_FALLBACK_SOURCE = "opencodeThinkingFallback";
 

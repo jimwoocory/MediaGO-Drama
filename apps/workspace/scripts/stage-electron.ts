@@ -11,13 +11,13 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const agent = process.argv[2]?.trim() || "opencode";
+const agent = process.argv[2]?.trim() || "codex";
 const platformArg = process.argv[3]?.trim() || "";
 const modelPlatform = process.argv[4]?.trim() || "mediago";
 const mediagoBaseURL =
 	process.argv[5]?.trim() || process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL?.trim() || "";
 const generationClis =
-	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina";
+	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina,libtv,pippit";
 const includeProtectedPackRuntime =
 	process.env.MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME?.trim() === "1";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -37,7 +37,7 @@ const serviceBinaries = serviceBinaryNames.map((name) => ({
 	name: `${name}${targetPlatform.binaryExt}`,
 	path: join(serverBinDir, `${name}${targetPlatform.binaryExt}`),
 }));
-const agentDist = join(vendorDistRoot, agent);
+const agentIDs = unique(["codex", "opencode", agent]);
 const toolsDist = join(vendorDistRoot, "tools");
 const electronResourcesDir = join(workspaceDir, "electron", "resources");
 const baseToolIDs = ["ffmpeg", "ffprobe"];
@@ -50,10 +50,13 @@ const selectedToolIDs = unique([
 
 function main(): void {
 	for (const binary of serviceBinaries) ensureExecutable(binary.path);
-	ensureFile(
-		join(agentDist, "agent.json"),
-		`missing prepared agent: ${join(agentDist, "agent.json")}`,
-	);
+	for (const agentID of agentIDs) {
+		const agentDist = join(vendorDistRoot, agentID);
+		ensureFile(
+			join(agentDist, "agent.json"),
+			`missing prepared agent: ${join(agentDist, "agent.json")}`,
+		);
+	}
 	for (const toolID of selectedToolIDs) {
 		ensureFile(
 			join(toolsDist, toolID, "tool.json"),
@@ -74,7 +77,9 @@ function main(): void {
 		cpSync(binary.path, stagedBinary);
 		chmodSync(stagedBinary, 0o755);
 	}
-	cpSync(agentDist, join(agentsDir, agent), { recursive: true });
+	for (const agentID of agentIDs) {
+		cpSync(join(vendorDistRoot, agentID), join(agentsDir, agentID), { recursive: true });
+	}
 	for (const toolID of selectedToolIDs) {
 		cpSync(join(toolsDist, toolID), join(stagedToolsDir, toolID), { recursive: true });
 	}

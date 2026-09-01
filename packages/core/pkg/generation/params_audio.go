@@ -88,6 +88,19 @@ func minimaxSpeechParams() RouteParamConfig {
 	})
 }
 
+func speechAPIParams() RouteParamConfig {
+	params := []RouteParam{
+		numberRouteParam(ParamSpeed, 1, 0.5, 2),
+		selectRouteParam(ParamOutputFormat, "mp3", audioFormatOptions()),
+	}
+	return routeParamConfig(params, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamSpeed},
+			{From: ParamOutputFormat, To: "format"},
+		},
+	})
+}
+
 func audioFormatOptions() []ParamOption {
 	return []ParamOption{
 		{Label: "MP3", Value: "mp3"},

@@ -21,11 +21,19 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 		return workflow.generationProviderFactory(route)
 	}
 
+	speechSettings, err := workflow.settings.GetSpeechAPISettings(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("reading Speech API settings: %w", err)
+	}
+
 	return runtime.NewProvider(runtime.Config{
 		Credentials:                   workflow.generationCredentialResolver(),
 		MultimodalTextProviderFactory: workflow.multimodalTextProviderFactory,
 		OpenRouterAppName:             "mediago-drama",
 		MediagoBaseURL:                workflow.mediagoBaseURL,
+		SpeechAPIBaseURL:              speechSettings.BaseURL,
+		SpeechAPIModel:                speechSettings.Model,
+		SpeechAPIVoice:                speechSettings.Voice,
 		JimengBinPath:                 workflow.jimengBinPath,
 		JimengBinDir:                  workflow.jimengBinDir,
 		LibTVBinPath:                  workflow.libTVBinPath,
@@ -106,6 +114,12 @@ func (workflow *GenerationService) generationRouteConfiguredWithMediagoModels(
 	}
 	if route.Provider == coregeneration.ProviderMediago && strings.TrimSpace(workflow.mediagoBaseURL) == "" {
 		return false
+	}
+	if route.Provider == coregeneration.ProviderSpeechAPI {
+		speechSettings, err := workflow.settings.GetSpeechAPISettings(context.Background())
+		if err != nil || strings.TrimSpace(speechSettings.BaseURL) == "" {
+			return false
+		}
 	}
 	configured := workflow.generationRouteCredentialsConfigured(route)
 	if !configured {

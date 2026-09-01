@@ -684,7 +684,7 @@ const RelayProfileEditDialog: React.FC<{
 							{isExisting ? "编辑中转渠道" : "新增中转渠道"}
 						</DialogPrimitive.Title>
 						<p className="mt-1 text-xs text-muted-foreground">
-							配置 Codex Responses 兼容服务的名称、地址和凭据。
+							配置 Codex 中转服务；上游可使用 Responses 或 Chat Completions 协议。
 						</p>
 					</div>
 					<DialogClose asChild>
@@ -712,6 +712,32 @@ const RelayProfileEditDialog: React.FC<{
 								placeholder="https://relay.example.com/v1"
 								className="rounded-md font-mono"
 							/>
+						</label>
+						<label>
+							<span className="mb-2 block text-xs text-muted-foreground">Model ID</span>
+							<Input
+								value={draft.model}
+								onChange={(event) => onDraftChange({ ...draft, model: event.target.value })}
+								placeholder="gpt-5.6-terra"
+								className="rounded-md font-mono"
+							/>
+						</label>
+						<label>
+							<span className="mb-2 block text-xs text-muted-foreground">上游协议</span>
+							<select
+								value={draft.protocol}
+								onChange={(event) =>
+									onDraftChange({ ...draft, protocol: event.target.value as CodexRelayProtocol })
+								}
+								className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							>
+								<option value="responses">Responses</option>
+								<option value="chatCompletions">Chat Completions</option>
+							</select>
+							<p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
+								Codex 本地始终使用 Responses；选择 Chat Completions 时由 MediaGo
+								自动转换请求、工具调用和响应流。
+							</p>
 						</label>
 						<div className="grid gap-2">
 							<div className="flex items-center justify-between gap-3">

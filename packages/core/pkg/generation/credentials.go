@@ -33,6 +33,14 @@ func CredentialSpecs() []CredentialSpec {
 			Description: "OpenRouter multimodal routes",
 		},
 		{
+			ID:              ProviderSpeechAPI,
+			Label:           "第三方 Speech API",
+			Description:     "OpenAI-compatible text-to-speech route",
+			CredentialLabel: "Speech API Key",
+			Placeholder:     "输入 Speech API Key",
+			Help:            "可独立配置 Base URL、模型 ID 和默认音色，不影响 MiniMax 官方 TTS。",
+		},
+		{
 			ID:          ProviderOpenAI,
 			Label:       "OpenAI",
 			Description: "OpenAI official text and image routes",

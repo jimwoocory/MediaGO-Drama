@@ -33,7 +33,14 @@ import {
 	rendererProtocolScheme,
 	resolveRendererAssetPath,
 } from "./renderer-protocol.js";
-import { type SidecarConnection, startServerSidecar, stopServerSidecar } from "./sidecar.js";
+import {
+	type SidecarConnection,
+	preparePackagedWorkspace,
+	startServerSidecar,
+	stopServerSidecar,
+} from "./sidecar.js";
+import { validateStartupCredentials } from "./startup-auth.js";
+import { startupLoginHTML } from "./startup-login-page.js";
 import { registerDesktopUpdater } from "./updater.js";
 
 protocol.registerSchemesAsPrivileged([
@@ -48,10 +55,14 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow: BrowserWindow | null = null;
+let loginWindow: BrowserWindow | null = null;
 let promptPackEditorWindow: BrowserWindow | null = null;
 let promptPackEditorCloseAllowed = false;
 let pendingPromptPackEditorClose: { action: "close" | "quit"; requestId: string } | null = null;
 let isQuitting = false;
+let sidecarConnection: SidecarConnection | null = null;
+let startupAuthenticated = false;
+let workspaceStarted = false;
 
 const configuredRendererURL = process.env.ELECTRON_RENDERER_URL?.trim();
 const rendererUrl = app.isPackaged
@@ -115,14 +126,14 @@ const openExternalURL = async (value: string) => {
 
 const sidecarTokenHeader = "X-MediaGo-Sidecar-Token";
 
-const registerRendererProtocol = () => {
+const registerRendererProtocol = (sidecar?: SidecarConnection | null) => {
 	session.defaultSession.webRequest.onHeadersReceived(
 		{ urls: ["app://localhost/*"] },
 		(details, callback) => {
 			callback({
 				responseHeaders: {
 					...details.responseHeaders,
-					"Content-Security-Policy": [rendererContentSecurityPolicy],
+					"Content-Security-Policy": [rendererContentSecurityPolicy(sidecar?.origin)],
 					"Referrer-Policy": ["no-referrer"],
 					"X-Content-Type-Options": ["nosniff"],
 				},
@@ -152,6 +163,54 @@ const authenticateSidecarRequests = (sidecar: SidecarConnection) => {
 				},
 			});
 		},
+	);
+};
+
+const showLoginWindow = () => {
+	const window = loginWindow;
+	if (!window || window.isDestroyed()) return;
+	if (window.isMinimized()) window.restore();
+	if (!window.isVisible()) window.show();
+	window.moveTop();
+	window.focus();
+};
+
+const createLoginWindow = async () => {
+	if (loginWindow && !loginWindow.isDestroyed()) {
+		showLoginWindow();
+		return;
+	}
+	loginWindow = new BrowserWindow({
+		title: "小树人 MediaGo Drama",
+		width: 520,
+		height: 650,
+		minWidth: 520,
+		maxWidth: 520,
+		minHeight: 650,
+		maxHeight: 650,
+		center: true,
+		show: false,
+		frame: false,
+		resizable: false,
+		backgroundColor: "#eef3fb",
+		webPreferences: {
+			preload: preloadPath(),
+			contextIsolation: true,
+			devTools: false,
+			nodeIntegration: false,
+			sandbox: true,
+		},
+	});
+	loginWindow.setMenuBarVisibility(false);
+	loginWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+	loginWindow.webContents.on("will-navigate", (event) => event.preventDefault());
+	loginWindow.once("ready-to-show", showLoginWindow);
+	loginWindow.on("closed", () => {
+		loginWindow = null;
+		if (!startupAuthenticated && !isQuitting) app.quit();
+	});
+	await loginWindow.loadURL(
+		`data:text/html;charset=utf-8,${encodeURIComponent(startupLoginHTML())}`,
 	);
 };
 
@@ -262,7 +321,7 @@ const openPromptPackEditorWindow = async (options: PromptPackEditorOpenOptions =
 
 const createWindow = async () => {
 	mainWindow = new BrowserWindow({
-		title: "MediaGo Drama",
+		title: "小树人 MediaGo Drama",
 		width: 1280,
 		height: 905,
 		minWidth: 960,
@@ -303,6 +362,7 @@ app.on("before-quit", (event) => {
 	}
 	isQuitting = true;
 	stopServerSidecar();
+	sidecarConnection = null;
 });
 
 app.on("window-all-closed", () => {
@@ -310,8 +370,32 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-	if (BrowserWindow.getAllWindows().length === 0) void createWindow();
-	else mainWindow?.show();
+	if (BrowserWindow.getAllWindows().length === 0) {
+		if (startupAuthenticated) void createWindow();
+		else void createLoginWindow();
+		return;
+	}
+	if (startupAuthenticated) showMainWindow();
+	else showLoginWindow();
+});
+
+ipcMain.handle(desktopIpcChannel.authenticateStartup, async (event, value: unknown) => {
+	const window = loginWindow;
+	if (!window || window.isDestroyed() || event.sender !== window.webContents) {
+		throw new Error("startup authentication came from an untrusted window");
+	}
+	if (!validateStartupCredentials((value ?? {}) as { username?: unknown; password?: unknown })) {
+		return { ok: false, message: "账号或密码错误" };
+	}
+	startupAuthenticated = true;
+	try {
+		await startWorkspace();
+		return { ok: true };
+	} catch (error) {
+		startupAuthenticated = false;
+		console.error("[mediago-electron] failed to start workspace after login", error);
+		return { ok: false, message: "工作台启动失败，请重试" };
+	}
 });
 
 ipcMain.handle(desktopIpcChannel.openExternal, async (event, url: string) => {
@@ -495,12 +579,37 @@ const pathIsAvailable = async (path: string) => {
 	}
 };
 
+const startWorkspace = async () => {
+	if (workspaceStarted) {
+		showMainWindow();
+		return;
+	}
+	workspaceStarted = true;
+	try {
+		preparePackagedWorkspace();
+		sidecarConnection = await startServerSidecar();
+		if (sidecarConnection) authenticateSidecarRequests(sidecarConnection);
+		registerRendererProtocol(sidecarConnection);
+		registerDesktopUpdater({
+			authorizeIpcSender: authorizeDesktopIpc,
+			getWindow: () => mainWindow,
+		});
+		await createWindow();
+	} catch (error) {
+		workspaceStarted = false;
+		stopServerSidecar();
+		sidecarConnection = null;
+		throw error;
+	}
+};
+
 const startApp = async () => {
-	registerRendererProtocol();
-	registerDesktopUpdater({ authorizeIpcSender: authorizeDesktopIpc, getWindow: () => mainWindow });
-	const sidecar = startServerSidecar();
-	if (sidecar) authenticateSidecarRequests(sidecar);
-	await createWindow();
+	await createLoginWindow();
+};
+
+const showActiveWindow = () => {
+	if (startupAuthenticated) showMainWindow();
+	else showLoginWindow();
 };
 
 // Enforce a single running instance: activating the app again (Dock, `open`,
@@ -509,14 +618,14 @@ const startApp = async () => {
 if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
-	app.on("second-instance", showMainWindow);
+	app.on("second-instance", showActiveWindow);
 	app
 		.whenReady()
 		.then(startApp)
 		.catch((error: unknown) => {
 			console.error("[mediago-electron] failed to start", error);
 			dialog.showErrorBox(
-				"MediaGo Drama 无法安全启动",
+				"小树人 MediaGo Drama 无法安全启动",
 				error instanceof Error ? error.message : "本地数据或服务状态无法安全恢复。",
 			);
 			app.quit();

@@ -42,6 +42,18 @@ type JianyingDraftSettingsRequest struct {
 	DraftsRoot string `json:"draftsRoot"`
 }
 
+// AIHubMixSettingsRequest updates the AIHubMix OpenAI-compatible endpoint.
+type AIHubMixSettingsRequest struct {
+	BaseURL string `json:"baseURL"`
+}
+
+// SpeechAPISettingsRequest updates the third-party OpenAI-compatible TTS endpoint.
+type SpeechAPISettingsRequest struct {
+	BaseURL string `json:"baseURL"`
+	Model   string `json:"model"`
+	Voice   string `json:"voice"`
+}
+
 // CodexRelayAPIKeyRequest updates a Codex relay profile API key.
 type CodexRelayAPIKeyRequest struct {
 	APIKey string `json:"apiKey"`
@@ -79,6 +91,62 @@ func (handler Settings) HandleAPIKeys(context *gin.Context) {
 // @Router /api/v1/settings/model-platforms [get]
 func (handler Settings) HandleModelPlatforms(context *gin.Context) {
 	httpresponse.OK(context, handler.service.ListModelPlatforms(context.Request.Context()))
+}
+
+// HandleAIHubMixSettings returns the editable AIHubMix endpoint.
+func (handler Settings) HandleAIHubMixSettings(context *gin.Context) {
+	settings, err := handler.service.GetAIHubMixSettings(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, settings)
+}
+
+// HandlePutAIHubMixSettings persists the editable AIHubMix endpoint.
+func (handler Settings) HandlePutAIHubMixSettings(context *gin.Context) {
+	payload, err := decodeJSON[AIHubMixSettingsRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	settings, err := handler.service.SetAIHubMixSettings(
+		context.Request.Context(),
+		service.AIHubMixSettings{BaseURL: payload.BaseURL},
+	)
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, settings)
+}
+
+// HandleSpeechAPISettings returns the third-party TTS endpoint settings.
+func (handler Settings) HandleSpeechAPISettings(context *gin.Context) {
+	settings, err := handler.service.GetSpeechAPISettings(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, settings)
+}
+
+// HandlePutSpeechAPISettings persists the third-party TTS endpoint settings.
+func (handler Settings) HandlePutSpeechAPISettings(context *gin.Context) {
+	payload, err := decodeJSON[SpeechAPISettingsRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	settings, err := handler.service.SetSpeechAPISettings(
+		context.Request.Context(),
+		service.SpeechAPISettings{BaseURL: payload.BaseURL, Model: payload.Model, Voice: payload.Voice},
+	)
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, settings)
 }
 
 // HandleJianyingDraftSettings godoc

@@ -17,6 +17,7 @@ import (
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
 	servicemedia "github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
+	serviceproductionprofile "github.com/mediago-dev/mediago-drama/services/server/internal/service/productionprofile"
 	serviceprojectasset "github.com/mediago-dev/mediago-drama/services/server/internal/service/projectasset"
 	servicepromptlibrary "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptlibrary"
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
@@ -29,36 +30,37 @@ import (
 )
 
 type apiHandler struct {
-	initErr           error
-	workspaceState    *appworkspace.WorkspaceStateService
-	events            *appevents.Broker
-	workspaceEvents   *serviceworkspaceevent.Broker
-	agentSessions     *agentSessionService
-	agentRunner       agentRunner
-	documentRunner    documentOperationRunner
-	agentRunTimeout   time.Duration
-	agentBridgeURL    string
-	agentBridgeToken  string
-	agentRuntime      *serviceagent.AgentRuntime
-	backendService    *serviceagent.AgentBackendService
-	settings          *servicesettings.Settings
-	capability        *servicecapability.Service
-	billing           *servicebilling.Service
-	generation        *servicegeneration.GenerationService
-	selection         *serviceselection.Service
-	jianyingDraft     *servicejianyingdraft.Service
-	mediaAssets       *servicemedia.MediaAssets
-	previewStreamer   *servicemedia.FFmpegPreviewStreamer
-	projectAssets     *serviceprojectasset.ProjectAssets
-	promptPack        *servicepromptpack.Service
-	promptTemplates   *serviceprompttemplates.Service
-	promptLibrary     *servicepromptlibrary.Service
-	skillRegistry     *serviceskill.Registry
-	codexSkills       *servicecodexskill.Service
-	runtimeExtensions []RuntimeExtension
-	shutdownCtx       context.Context
-	shutdownCancel    context.CancelFunc
-	workers           sync.WaitGroup
+	initErr            error
+	workspaceState     *appworkspace.WorkspaceStateService
+	events             *appevents.Broker
+	workspaceEvents    *serviceworkspaceevent.Broker
+	agentSessions      *agentSessionService
+	agentRunner        agentRunner
+	documentRunner     documentOperationRunner
+	agentRunTimeout    time.Duration
+	agentBridgeURL     string
+	agentBridgeToken   string
+	agentRuntime       *serviceagent.AgentRuntime
+	backendService     *serviceagent.AgentBackendService
+	settings           *servicesettings.Settings
+	capability         *servicecapability.Service
+	billing            *servicebilling.Service
+	generation         *servicegeneration.GenerationService
+	selection          *serviceselection.Service
+	jianyingDraft      *servicejianyingdraft.Service
+	mediaAssets        *servicemedia.MediaAssets
+	previewStreamer    *servicemedia.FFmpegPreviewStreamer
+	projectAssets      *serviceprojectasset.ProjectAssets
+	productionProfiles *serviceproductionprofile.Registry
+	promptPack         *servicepromptpack.Service
+	promptTemplates    *serviceprompttemplates.Service
+	promptLibrary      *servicepromptlibrary.Service
+	skillRegistry      *serviceskill.Registry
+	codexSkills        *servicecodexskill.Service
+	runtimeExtensions  []RuntimeExtension
+	shutdownCtx        context.Context
+	shutdownCancel     context.CancelFunc
+	workers            sync.WaitGroup
 }
 
 // ReadinessError returns startup dependency initialization failures, if any.

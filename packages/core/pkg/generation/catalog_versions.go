@@ -3,6 +3,7 @@ package generation
 const (
 	FamilySeedream      = "seedream"
 	FamilyMiniMaxSpeech = "minimax-speech"
+	FamilySpeechAPI     = "speech-api"
 	FamilyGPTText       = "gpt-text"
 	FamilyGeminiText    = "gemini-text"
 	FamilyMiniMaxText   = "minimax-text"
@@ -17,6 +18,7 @@ const (
 	VersionSeedream47              = "seedream-4.7"
 	VersionMiniMaxSpeech28HD       = "minimax-speech-2.8-hd"
 	VersionMiniMaxSpeech28Turbo    = "minimax-speech-2.8-turbo"
+	VersionSpeechAPICompatible     = "speech-api-compatible"
 	VersionGPT41MiniText           = "gpt-4.1-mini-text"
 	VersionGPT5MiniText            = "gpt-5-mini-text"
 	VersionGPT55Text               = "gpt-5.5-text"
@@ -52,6 +54,7 @@ const (
 	ModelSeedream47              = "seedream-4.7"
 	ModelMiniMaxSpeech28HD       = "minimax-speech-2.8-hd"
 	ModelMiniMaxSpeech28Turbo    = "minimax-speech-2.8-turbo"
+	ModelSpeechAPICompatible     = "gpt-4o-mini-tts"
 	ModelGPT41MiniText           = "gpt-4.1-mini-text"
 	ModelGPT5MiniText            = "gpt-5-mini-text"
 	ModelGPT55Text               = "gpt-5.5-text"

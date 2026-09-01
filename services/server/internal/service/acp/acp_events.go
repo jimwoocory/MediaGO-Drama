@@ -116,20 +116,15 @@ func InferACPToolKind(explicit string, title string) string {
 	if strings.TrimSpace(explicit) != "" {
 		return strings.TrimSpace(explicit)
 	}
-	normalized := strings.ToLower(strings.TrimSpace(title))
-	normalized = strings.TrimPrefix(normalized, "tool:")
-	normalized = strings.TrimSpace(normalized)
-	if slash := strings.LastIndex(normalized, "/"); slash >= 0 {
-		normalized = normalized[slash+1:]
-	}
-	if namespace := strings.LastIndex(normalized, "__"); namespace >= 0 {
-		normalized = normalized[namespace+2:]
-	}
-	switch normalized {
-	case "list_projects", "load_skill", "get_project_config", "list_comments", "get_comment":
+	switch CanonicalACPToolName("", title) {
+	case "list_files", "read", "search", "list_projects", "load_skill", "get_project_config", "list_comments", "get_comment":
 		return "read"
-	case "update_project_config", "mutate_comment":
+	case "write", "edit", "update_project_config", "mutate_comment":
 		return "edit"
+	case "execute", "generate_media", "generate_media_batch":
+		return "execute"
+	case "ask_user_selection", "ask_user_form", "await_user_selection":
+		return "other"
 	default:
 		return ""
 	}
@@ -145,6 +140,7 @@ func MapACPPermissionToolCall(toolCall acp.ToolCallUpdate) *AgentACPToolCallSumm
 	if toolCall.Title != nil {
 		summary.Title = strings.TrimSpace(*toolCall.Title)
 	}
+	summary.Name = CanonicalACPToolName(summary.Kind, summary.Title)
 	if summary.ID == "" && summary.Title == "" && summary.Kind == "" && summary.Status == "" {
 		return nil
 	}

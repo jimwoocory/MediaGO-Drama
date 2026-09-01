@@ -19,6 +19,7 @@ import (
 	httproutes "github.com/mediago-dev/mediago-drama/services/server/internal/http/routes"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -159,6 +160,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	billingHandler := httphandlers.NewBilling(api.billing)
 	mediaHandler := httphandlers.NewMediaAssets(api.mediaAssets)
 	projectAssetHandler := httphandlers.NewProjectAssets(api.projectAssets)
+	productionProfileHandler := httphandlers.NewProductionProfiles(api.productionProfiles)
 	backendsHandler := httphandlers.NewAgentBackends(api.backendService)
 	projectHandler := httphandlers.NewProjects(api.workspaceState, randomID)
 	projectConfigHandler := httphandlers.NewProjectConfigs(api.workspaceState)
@@ -225,6 +227,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		Billing:               billingHandler,
 		MediaAssets:           mediaHandler,
 		ProjectAssets:         projectAssetHandler,
+		ProductionProfiles:    productionProfileHandler,
 		AgentBackends:         backendsHandler,
 		Projects:              projectHandler,
 		ProjectConfigs:        projectConfigHandler,
@@ -288,7 +291,48 @@ func newAgentRuntimeConfigInspector(api *apiHandler) httphandlers.AgentRuntimeCo
 		if err != nil {
 			return agentRuntimeConfigResponse{}, err
 		}
-		return inspector.InspectSessionConfig(ctx, projectID, projectDir)
+		config, inspectErr := inspector.InspectSessionConfig(ctx, projectID, projectDir)
+		coreModels, err := api.settings.ListConfiguredAgentCoreRuntimeModels(ctx)
+		if err != nil {
+			return agentRuntimeConfigResponse{}, err
+		}
+		if inspectErr != nil {
+			if len(coreModels) == 0 {
+				return agentRuntimeConfigResponse{}, inspectErr
+			}
+			// Codex remains the default harness, but an unavailable Codex account must
+			// not hide independently configured Agent Core providers.
+			config = agentRuntimeConfigResponse{}
+		}
+		if len(coreModels) == 0 {
+			return config, nil
+		}
+		if config.Model == nil {
+			config.Model = &serviceagent.AgentRuntimeSelectConfig{
+				Name:    "模型",
+				Source:  "configuredProviders",
+				Options: []serviceagent.AgentRuntimeSelectOption{},
+			}
+		}
+		seen := make(map[string]bool, len(config.Model.Options)+len(coreModels))
+		for _, option := range config.Model.Options {
+			seen[strings.ToLower(strings.TrimSpace(option.Value))] = true
+		}
+		for _, model := range coreModels {
+			key := strings.ToLower(strings.TrimSpace(model.Value))
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			config.Model.Options = append(config.Model.Options, serviceagent.AgentRuntimeSelectOption{
+				Value: strings.TrimSpace(model.Value),
+				Name:  strings.TrimSpace(model.Name),
+			})
+		}
+		if strings.TrimSpace(config.Model.CurrentValue) == "" && len(config.Model.Options) > 0 {
+			config.Model.CurrentValue = config.Model.Options[0].Value
+		}
+		return config, nil
 	}
 }
 

@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -30,7 +31,7 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 	}()
 	switch {
 	case update.AgentMessageChunk != nil:
-		if text := ACPContentBlockText(update.AgentMessageChunk.Content); text != "" {
+		if text := client.filterDSMLChunk(ACPContentBlockText(update.AgentMessageChunk.Content)); text != "" {
 			acpLog().Debug("acp session update", client.logAttrs("update", "agent_message_chunk", "chunk_len", len(text), "buffered", true)...)
 			client.finishThoughts()
 			itemID := client.appendMessage(text, optionalACPMessageID(update.AgentMessageChunk.MessageId))
@@ -45,7 +46,7 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 			client.publishEvent(event)
 		}
 	case update.AgentThoughtChunk != nil:
-		if text := ACPContentBlockText(update.AgentThoughtChunk.Content); text != "" {
+		if text := client.filterDSMLChunk(ACPContentBlockText(update.AgentThoughtChunk.Content)); text != "" {
 			client.finishMessageItem()
 			acpLog().Debug("acp session update", client.logAttrs("update", "agent_thought_chunk", "chunk_len", len(text), "buffered", true)...)
 			itemID := optionalACPMessageID(update.AgentThoughtChunk.MessageId)
@@ -64,8 +65,14 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 	case update.ToolCall != nil:
 		client.finishMessageItem()
 		toolKind := InferACPToolKind(string(update.ToolCall.Kind), update.ToolCall.Title)
+		toolName := CanonicalACPToolName(toolKind, update.ToolCall.Title)
 		rawInput := MarshalACPRawMessage(update.ToolCall.RawInput)
 		rawOutput := MarshalACPRawMessage(update.ToolCall.RawOutput)
+		if decision := client.observeToolLoopGuard(string(update.ToolCall.ToolCallId), toolKind, toolName, rawInput); decision.ForceFinalize {
+			client.finishThoughts()
+			client.publishEvent(agentEvent{Type: "agent.activity", Message: "工具安全保护触发：" + decision.Reason})
+			return fmt.Errorf("force finalize: %s", decision.Reason)
+		}
 		acpLog().Debug(
 			"acp session update",
 			client.logAttrs(
@@ -82,6 +89,7 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 			ACP: &agentACPEvent{
 				Kind:       "toolCall",
 				ToolCallID: string(update.ToolCall.ToolCallId),
+				ToolName:   toolName,
 				ToolKind:   toolKind,
 				Title:      update.ToolCall.Title,
 				Status:     string(update.ToolCall.Status),
@@ -128,11 +136,13 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 			}
 		}
 		toolKind := InferACPToolKind(OptionalACPToolKind(update.ToolCallUpdate.Kind), title)
+		toolName := CanonicalACPToolName(toolKind, title)
 		rawInput := MarshalACPRawMessage(update.ToolCallUpdate.RawInput)
 		rawOutput := MarshalACPRawMessage(update.ToolCallUpdate.RawOutput)
 		acpPayload := &agentACPEvent{
 			Kind:       "toolCallUpdate",
 			ToolCallID: string(update.ToolCallUpdate.ToolCallId),
+			ToolName:   toolName,
 			ToolKind:   toolKind,
 			Title:      title,
 			Status:     status,

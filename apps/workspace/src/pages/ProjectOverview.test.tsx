@@ -85,6 +85,7 @@ const projectConfig: ProjectConfig = {
 	description: "",
 	name: "222",
 	overview: { categoryDefaults: {} },
+	production: { schemaVersion: 1 },
 	projectId: "project-a",
 	schemaVersion: 1,
 };

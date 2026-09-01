@@ -1,8 +1,17 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { agentsDir, isPackaged, resourceRoot, serverBinaryPath, toolsDir } from "./paths.js";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { createServer } from "node:net";
+import { dirname, join } from "node:path";
+import {
+	agentsDir,
+	isPackaged,
+	legacyUserWorkspaceDir,
+	portableWorkspaceDir,
+	resourceRoot,
+	serverBinaryPath,
+	toolsDir,
+} from "./paths.js";
 
 let child: ChildProcessWithoutNullStreams | null = null;
 let connection: SidecarConnection | null = null;
@@ -12,7 +21,28 @@ export type SidecarConnection = {
 	token: string;
 };
 
-export const startServerSidecar = (): SidecarConnection | null => {
+const directoryHasEntries = (path: string): boolean => {
+	try {
+		return existsSync(path) && readdirSync(path).length > 0;
+	} catch {
+		return false;
+	}
+};
+
+export const preparePackagedWorkspace = () => {
+	if (!isPackaged()) return;
+	const target = portableWorkspaceDir();
+	if (directoryHasEntries(target)) return;
+	const legacy = legacyUserWorkspaceDir();
+	mkdirSync(dirname(target), { recursive: true });
+	if (directoryHasEntries(legacy)) {
+		cpSync(legacy, target, { recursive: true, force: false, errorOnExist: true });
+		return;
+	}
+	mkdirSync(target, { recursive: true });
+};
+
+export const startServerSidecar = async (): Promise<SidecarConnection | null> => {
 	if (!isPackaged() && process.env.ELECTRON_RENDERER_URL) return null;
 	if (child && child.exitCode === null && connection) return connection;
 
@@ -23,7 +53,7 @@ export const startServerSidecar = (): SidecarConnection | null => {
 	const platformConfig = packagedModelPlatformConfig();
 	const localCLIConfig = packagedLocalCLIConfig();
 	const token = randomBytes(32).toString("base64url");
-	const serverPort = configuredServerPort();
+	const serverPort = await configuredServerPort();
 	const environment = sidecarEnvironment(platformConfig, localCLIConfig, serverPort, token);
 
 	const spawned = spawn(serverPath, [], {
@@ -109,7 +139,7 @@ const sidecarEnvironment = (
 
 	return {
 		...inherited,
-		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || "opencode"),
+		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || "codex"),
 		MEDIAGO_MODEL_PLATFORM: configuredValue(
 			"MEDIAGO_MODEL_PLATFORM",
 			platformConfig.modelPlatform || "mediago",
@@ -123,6 +153,7 @@ const sidecarEnvironment = (
 			localGenerationCLIsEnvValue(localCLIConfig.generationClis),
 		),
 		MEDIAGO_SERVER_PORT: serverPort,
+		...(packaged ? { MEDIAGO_WORKSPACE_DIR: portableWorkspaceDir() } : {}),
 		MEDIAGO_EXIT_ON_STDIN_CLOSE: "1",
 		MEDIAGO_SIDECAR_MODE: "1",
 		MEDIAGO_SIDECAR_TOKEN: token,
@@ -134,13 +165,33 @@ const sidecarEnvironment = (
 	};
 };
 
-const configuredServerPort = () => {
+const configuredServerPort = async () => {
 	if (!isPackaged()) {
 		const override = process.env.MEDIAGO_SERVER_PORT?.trim();
 		if (override) return override;
 	}
-	return "48273";
+	return reserveAvailableLoopbackPort();
 };
+
+const reserveAvailableLoopbackPort = () =>
+	new Promise<string>((resolve, reject) => {
+		const probe = createServer();
+		probe.unref();
+		probe.once("error", reject);
+		probe.listen({ host: "127.0.0.1", port: 0, exclusive: true }, () => {
+			const address = probe.address();
+			if (!address || typeof address === "string") {
+				probe.close();
+				reject(new Error("failed to allocate sidecar port"));
+				return;
+			}
+			const port = String(address.port);
+			probe.close((error) => {
+				if (error) reject(error);
+				else resolve(port);
+			});
+		});
+	});
 
 const blockedPackagedEnvironmentNames = new Set([
 	"BASH_ENV",

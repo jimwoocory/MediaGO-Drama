@@ -1,6 +1,6 @@
 import { Captions, ChevronLeft, ChevronRight, Film, Image, Mic2, Music2 } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -11,7 +11,22 @@ import {
 	type TimelineClip,
 	type TimelineTrackType,
 } from "@/domains/episode/lib/sample";
+import { readStoryboardLaneSources } from "@/domains/episode/lib/storyboard-shots";
+import {
+	productionPlanDurationSeconds,
+	storyboardLanesToProductionPlan,
+} from "@/domains/episode/lib/production";
+import { ProductionProfileSelector } from "@/domains/episode/components/ProductionProfileSelector";
+import {
+	getProductionProfiles,
+	productionProfilesKey,
+} from "@/domains/episode/api/production-profiles";
 import { useDocumentsStore } from "@/domains/documents/stores";
+import {
+	getProjectConfig,
+	projectConfigKey,
+	updateProjectConfig,
+} from "@/domains/projects/api/projects";
 import {
 	getWorkspaceResolvedEpisode,
 	workspaceResolvedEpisodeKey,
@@ -62,7 +77,11 @@ const trackMeta: Record<
 	},
 };
 
-export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = ({ documentId }) => {
+export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = ({
+	documentContent,
+	documentId,
+	documentTitle,
+}) => {
 	const [isExpanded, setIsExpanded] = useState(false);
 	const projectId = useDocumentsStore((state) => state.projectId);
 	const resolvedDocumentId = documentId?.trim() ?? "";
@@ -71,7 +90,35 @@ export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = (
 		canLoadEpisode ? workspaceResolvedEpisodeKey(resolvedDocumentId, projectId) : null,
 		() => getWorkspaceResolvedEpisode(resolvedDocumentId, projectId),
 	);
+	const canLoadProjectConfig = Boolean(isExpanded && projectId?.trim());
+	const { data: projectConfig, mutate: mutateProjectConfig } = useSWR(
+		canLoadProjectConfig ? projectConfigKey(projectId ?? "") : null,
+		() => getProjectConfig(projectId ?? ""),
+	);
+	const { data: productionProfilesPayload } = useSWR(
+		isExpanded ? productionProfilesKey : null,
+		getProductionProfiles,
+	);
 	const episode = resolvedEpisodeState?.episode ?? null;
+	const productionPlan = useMemo(() => {
+		const lanes = readStoryboardLaneSources(documentContent, { documentId: resolvedDocumentId });
+		return storyboardLanesToProductionPlan(lanes, {
+			id: `${resolvedDocumentId || "storyboard"}-production-plan`,
+			title: `${documentTitle?.trim() || "分镜"}制作计划`,
+			documentId: resolvedDocumentId || undefined,
+			profileId: projectConfig?.production.profileId,
+			targetDurationSeconds: projectConfig?.production.targetDurationSeconds,
+		});
+	}, [documentContent, documentTitle, projectConfig, resolvedDocumentId]);
+	const productionDuration = productionPlanDurationSeconds(productionPlan);
+	const productionProfiles = productionProfilesPayload?.profiles ?? [];
+	const selectProductionProfile = async (profileId: string) => {
+		if (!projectId?.trim()) return;
+		const result = await updateProjectConfig(projectId, {
+			production: { profileId },
+		});
+		await mutateProjectConfig(result.config, { revalidate: false });
+	};
 
 	return (
 		<aside
@@ -84,9 +131,11 @@ export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = (
 				{isExpanded ? (
 					<>
 						<div className="min-w-0">
-							<h2 className="truncate text-sm font-semibold text-foreground">分镜同步</h2>
+							<h2 className="truncate text-sm font-semibold text-foreground">分镜制作</h2>
 							<p className="truncate text-xs text-muted-foreground">
-								{episode?.sections.length ?? 0} 个组 · {formatTimelineTime(episode?.duration ?? 0)}
+								{episode?.sections.length ?? productionPlan.shots.length} 个组 ·{" "}
+								{productionPlan.shots.length} 镜头 ·{" "}
+								{formatTimelineTime(productionDuration || episode?.duration || 0)}
 							</p>
 						</div>
 						<Button
@@ -116,7 +165,23 @@ export const StoryboardTimelinePanel: React.FC<StoryboardTimelinePanelProps> = (
 
 			{isExpanded ? (
 				<div className="min-h-0 flex-1 overflow-y-auto p-2">
+					<div className="mb-3 border border-border bg-ide-editor p-2">
+						<ProductionProfileSelector
+							profiles={productionProfiles}
+							value={productionPlan.profileId}
+							onChange={(profileId) => void selectProductionProfile(profileId)}
+						/>
+					</div>
 					<div className="mb-2 flex flex-wrap gap-1">
+						<Badge variant="secondary">ProductionShot v1</Badge>
+						{productionPlan.profileId ? (
+							<Badge variant="outline">模式 · {productionPlan.profileId}</Badge>
+						) : null}
+						{productionPlan.targetDurationSeconds ? (
+							<Badge variant="outline">
+								目标 · {formatTimelineTime(productionPlan.targetDurationSeconds)}
+							</Badge>
+						) : null}
 						{autoTrackTypes.map((type) => {
 							const TrackIcon = trackMeta[type].icon;
 							return (

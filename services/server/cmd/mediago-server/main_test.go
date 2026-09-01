@@ -14,6 +14,7 @@ import (
 
 func TestApplyEnvOverrides(t *testing.T) {
 	t.Setenv("MEDIAGO_AGENT_ID", "opencode")
+	t.Setenv("MEDIAGO_WORKSPACE_DIR", `D:\portable\workspace`)
 	t.Setenv("MEDIAGO_AGENT_BIN_DIR", "/tmp/agents")
 	t.Setenv("MEDIAGO_FFMPEG_PATH", "/tmp/ffmpeg")
 	t.Setenv("MEDIAGO_FFMPEG_BIN_DIR", "/tmp/tools/ffmpeg")
@@ -37,6 +38,9 @@ func TestApplyEnvOverrides(t *testing.T) {
 
 	if config.Agent.ID != "opencode" {
 		t.Fatalf("Agent.ID = %q, want %q", config.Agent.ID, "opencode")
+	}
+	if config.WorkspaceDir != `D:\portable\workspace` {
+		t.Fatalf("WorkspaceDir = %q, want portable workspace", config.WorkspaceDir)
 	}
 	if config.Agent.BinDir != "/tmp/agents" {
 		t.Fatalf("Agent.BinDir = %q, want %q", config.Agent.BinDir, "/tmp/agents")

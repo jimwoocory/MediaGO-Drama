@@ -219,6 +219,7 @@ type AgentA2UIPayload struct {
 type AgentACPEvent struct {
 	Kind              string                     `json:"kind"`
 	ToolCallID        string                     `json:"toolCallId,omitempty"`
+	ToolName          string                     `json:"toolName,omitempty"`
 	ToolKind          string                     `json:"toolKind,omitempty"`
 	Title             string                     `json:"title,omitempty"`
 	Status            string                     `json:"status,omitempty"`
@@ -252,6 +253,7 @@ type AgentACPPermissionRequest struct {
 // AgentACPToolCallSummary describes the tool asking for permission.
 type AgentACPToolCallSummary struct {
 	ID     string `json:"id,omitempty"`
+	Name   string `json:"name,omitempty"`
 	Title  string `json:"title,omitempty"`
 	Kind   string `json:"kind,omitempty"`
 	Status string `json:"status,omitempty"`

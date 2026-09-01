@@ -113,6 +113,7 @@ func upsertProjectedACPToolCall(
 		displayACPToolTitle(metadataString(previousMetadata, "toolName"), toolCallID),
 		"工具调用",
 	)
+	toolName := firstNonEmpty(acp.ToolName, metadataString(previousMetadata, "canonicalToolName"))
 	status := firstNonEmpty(acp.Status, metadataString(previousMetadata, "status"))
 	startedAt := firstNonEmpty(metadataString(previousMetadata, "startedAt"), previous.CreatedAt, event.CreatedAt)
 	outputBlocks := acp.Content
@@ -127,18 +128,19 @@ func upsertProjectedACPToolCall(
 	}
 	bytes, lines := measureProjectedACPOutput(outputBlocks, rawOutput)
 	metadata := mergeMetadata(previousMetadata, map[string]any{
-		"toolName":     title,
-		"acpKind":      projectedACPToolKind(acp.ToolKind, inferProjectedACPToolKind(title), metadataString(previousMetadata, "acpKind")),
-		"toolCallId":   toolCallID,
-		"status":       status,
-		"durationMs":   projectedDurationMs(startedAt, event.CreatedAt, status, previousMetadata["durationMs"]),
-		"inputJson":    rawInput,
-		"outputJson":   rawOutput,
-		"outputBlocks": outputBlocks,
-		"locations":    locations,
-		"bytes":        bytes,
-		"lines":        lines,
-		"startedAt":    startedAt,
+		"toolName":          title,
+		"canonicalToolName": toolName,
+		"acpKind":           projectedACPToolKind(acp.ToolKind, inferProjectedACPToolKind(title), metadataString(previousMetadata, "acpKind")),
+		"toolCallId":        toolCallID,
+		"status":            status,
+		"durationMs":        projectedDurationMs(startedAt, event.CreatedAt, status, previousMetadata["durationMs"]),
+		"inputJson":         rawInput,
+		"outputJson":        rawOutput,
+		"outputBlocks":      outputBlocks,
+		"locations":         locations,
+		"bytes":             bytes,
+		"lines":             lines,
+		"startedAt":         startedAt,
 	})
 	message := AgentChatMessageRecord{
 		ID:        firstNonEmpty(previous.ID, messageIDForEvent(event, "tool")),

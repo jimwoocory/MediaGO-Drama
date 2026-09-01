@@ -163,6 +163,16 @@ export interface JianyingDraftSettings {
 	draftsRoot: string;
 }
 
+export interface AIHubMixSettings {
+	baseURL: string;
+}
+
+export interface SpeechAPISettings {
+	baseURL: string;
+	model: string;
+	voice: string;
+}
+
 export interface AgentModelProfileMutation {
 	templateId?: string;
 	name?: string;
@@ -182,6 +192,8 @@ export interface AgentModelProfileMutation {
 
 export const apiKeysKey = "/settings/api-keys";
 export const modelPlatformsKey = "/settings/model-platforms";
+export const aihubmixSettingsKey = "/settings/aihubmix";
+export const speechAPISettingsKey = "/settings/speech-api";
 export const agentModelProfilesKey = "/settings/agent-model-profiles";
 export const codexRelaySettingsKey = "/settings/codex-relay";
 export const codexAccountKey = "/settings/codex-account";
@@ -194,6 +206,26 @@ export const getAPIKeys = async () => {
 
 export const getModelPlatforms = async () => {
 	const response = await httpClient.get<ModelPlatformsResponse>(modelPlatformsKey);
+	return response.data;
+};
+
+export const getAIHubMixSettings = async () => {
+	const response = await httpClient.get<AIHubMixSettings>(aihubmixSettingsKey);
+	return response.data;
+};
+
+export const saveAIHubMixSettings = async (baseURL: string) => {
+	const response = await httpClient.put<AIHubMixSettings>(aihubmixSettingsKey, { baseURL });
+	return response.data;
+};
+
+export const getSpeechAPISettings = async () => {
+	const response = await httpClient.get<SpeechAPISettings>(speechAPISettingsKey);
+	return response.data;
+};
+
+export const saveSpeechAPISettings = async (input: SpeechAPISettings) => {
+	const response = await httpClient.put<SpeechAPISettings>(speechAPISettingsKey, input);
 	return response.data;
 };
 

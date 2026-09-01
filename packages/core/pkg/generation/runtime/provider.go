@@ -17,6 +17,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/official"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/pippit"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/speechapi"
 )
 
 // CredentialResolver loads credentials by catalog credential key.
@@ -48,6 +49,9 @@ type Config struct {
 	OpenRouterBaseURL string
 	OpenRouterAppURL  string
 	OpenRouterAppName string
+	SpeechAPIBaseURL  string
+	SpeechAPIModel    string
+	SpeechAPIVoice    string
 
 	OpenAIBaseURL     string
 	GoogleBaseURL     string
@@ -193,6 +197,8 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 			return provider.dmxProvider(ctx)
 		case generation.ProviderOpenRouter:
 			return provider.openRouterProvider(ctx)
+		case generation.ProviderSpeechAPI:
+			return provider.speechAPIProvider(ctx)
 		default:
 			return nil, fmt.Errorf("generation provider %q is not implemented", route.Provider)
 		}
@@ -337,6 +343,33 @@ func (provider *Provider) openRouterProvider(ctx context.Context) (generation.Pr
 			APIKey:     apiKey,
 			AppURL:     provider.config.OpenRouterAppURL,
 			AppTitle:   provider.config.OpenRouterAppName,
+			HTTPClient: provider.config.HTTPClient,
+		})
+	})
+}
+
+func (provider *Provider) speechAPIProvider(ctx context.Context) (generation.Provider, error) {
+	apiKey, err := provider.credential(ctx, generation.ProviderSpeechAPI)
+	if err != nil {
+		return nil, err
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(provider.config.SpeechAPIBaseURL), "/")
+	if baseURL == "" {
+		return nil, fmt.Errorf("speech API base URL is not configured")
+	}
+	cacheKey := provider.cacheKey(
+		generation.ProviderSpeechAPI,
+		apiKey,
+		baseURL,
+		provider.config.SpeechAPIModel,
+		provider.config.SpeechAPIVoice,
+	)
+	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
+		return speechapi.NewProvider(speechapi.Config{
+			BaseURL:    baseURL,
+			APIKey:     apiKey,
+			Model:      provider.config.SpeechAPIModel,
+			Voice:      provider.config.SpeechAPIVoice,
 			HTTPClient: provider.config.HTTPClient,
 		})
 	})

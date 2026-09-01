@@ -173,12 +173,21 @@ func (config *ProjectOverviewConfig) UnmarshalJSON(data []byte) error {
 
 // ProjectConfig is the canonical project.media.json contract.
 type ProjectConfig struct {
-	SchemaVersion int                   `json:"schemaVersion"`
-	ProjectID     string                `json:"projectId"`
-	Name          string                `json:"name"`
-	Description   string                `json:"description"`
-	Overview      ProjectOverviewConfig `json:"overview"`
-	CreatedAt     string                `json:"createdAt"`
+	SchemaVersion int                     `json:"schemaVersion"`
+	ProjectID     string                  `json:"projectId"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	Overview      ProjectOverviewConfig   `json:"overview"`
+	Production    ProjectProductionConfig `json:"production"`
+	CreatedAt     string                  `json:"createdAt"`
+}
+
+// ProjectProductionConfig stores durable production planning selection in project.media.json.
+// Creative profile definitions live in the product registry; the project only persists stable ids.
+type ProjectProductionConfig struct {
+	SchemaVersion         int     `json:"schemaVersion"`
+	ProfileID             string  `json:"profileId,omitempty"`
+	TargetDurationSeconds float64 `json:"targetDurationSeconds,omitempty"`
 }
 
 // GetProjectConfigInput is the run-scoped get-project-config tool input.
@@ -212,9 +221,16 @@ func (patch *ProjectOverviewConfigPatch) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ProjectProductionConfigPatch is a sparse production planning update.
+type ProjectProductionConfigPatch struct {
+	ProfileID             *string  `json:"profileId,omitempty" jsonschema:"制作模式稳定 ID；空字符串表示清除选择。"`
+	TargetDurationSeconds *float64 `json:"targetDurationSeconds,omitempty" jsonschema:"目标总时长（秒）；0 表示清除目标，不设置最大时长。"`
+}
+
 // ProjectConfigPatchInput is a sparse project.media.json update.
 type ProjectConfigPatchInput struct {
-	Overview *ProjectOverviewConfigPatch `json:"overview,omitempty" jsonschema:"项目 Overview 配置。支持 categoryDefaults。"`
+	Overview   *ProjectOverviewConfigPatch   `json:"overview,omitempty" jsonschema:"项目 Overview 配置。支持 categoryDefaults。"`
+	Production *ProjectProductionConfigPatch `json:"production,omitempty" jsonschema:"项目 Production 配置。只保存模式 ID 与目标时长。"`
 }
 
 // ProjectConfigToolOutput is returned by project config tools.

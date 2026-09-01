@@ -363,9 +363,12 @@ describe("AgentChat runtime config persistence", () => {
 		expect(screen.getByTestId("location-probe")).toHaveTextContent("/settings");
 	});
 
-	it("opens API key settings for a non-Codex runtime error", async () => {
+	it("opens API key settings for a configured provider model runtime error", async () => {
 		vi.resetModules();
-		testState.activeBackendId = "opencode";
+		persistAgentState({
+			runtimeConfigDefaults: { model: "aihubmix/gpt-5.5" },
+			runtimeConfigByProject: {},
+		});
 		testState.runtimeConfig = undefined;
 		testState.runtimeConfigError = {
 			code: 503,

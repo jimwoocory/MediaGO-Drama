@@ -335,6 +335,7 @@ export interface AgentFormPayload {
 export interface AgentACPEvent {
 	kind: string;
 	toolCallId?: string;
+	toolName?: string;
 	toolKind?: string;
 	title?: string;
 	status?: string;
@@ -365,6 +366,7 @@ export interface AgentACPPermissionRequest {
 
 export interface AgentACPToolCallSummary {
 	id?: string;
+	name?: string;
 	title?: string;
 	kind?: string;
 	status?: string;

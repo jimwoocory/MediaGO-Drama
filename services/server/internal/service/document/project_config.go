@@ -49,6 +49,18 @@ func (store *Service) SaveProjectConfigPatchInput(projectID string, input mediam
 			next.Overview.CategoryDefaults = normalizeCategoryDefaults(input.Overview.CategoryDefaults)
 		}
 	}
+	if input.Production != nil {
+		if input.Production.ProfileID != nil {
+			next.Production.ProfileID = strings.TrimSpace(*input.Production.ProfileID)
+		}
+		if input.Production.TargetDurationSeconds != nil {
+			if *input.Production.TargetDurationSeconds < 0 {
+				return ProjectConfigMutationResult{}, fmt.Errorf("targetDurationSeconds must be non-negative")
+			}
+			next.Production.TargetDurationSeconds = *input.Production.TargetDurationSeconds
+		}
+		next.Production.SchemaVersion = 1
+	}
 	if reflect.DeepEqual(next, config) {
 		return ProjectConfigMutationResult{Config: config, Changed: false}, nil
 	}
@@ -101,6 +113,11 @@ func mcpProjectConfigFromManifest(manifest shared.ProjectManifestFile) mediamcp.
 		Overview: mediamcp.ProjectOverviewConfig{
 			CategoryDefaults: normalizeCategoryDefaults(manifest.Overview.CategoryDefaults),
 		},
+		Production: mediamcp.ProjectProductionConfig{
+			SchemaVersion:         1,
+			ProfileID:             strings.TrimSpace(manifest.Production.ProfileID),
+			TargetDurationSeconds: manifest.Production.TargetDurationSeconds,
+		},
 		CreatedAt: manifest.CreatedAt,
 	}
 }
@@ -133,6 +150,11 @@ func projectManifestFromMCPConfig(config mediamcp.ProjectConfig) shared.ProjectM
 		Description:   strings.TrimSpace(config.Description),
 		Overview: shared.ProjectManifestOverviewFile{
 			CategoryDefaults: normalizeCategoryDefaults(config.Overview.CategoryDefaults),
+		},
+		Production: shared.ProjectManifestProductionFile{
+			SchemaVersion:         1,
+			ProfileID:             strings.TrimSpace(config.Production.ProfileID),
+			TargetDurationSeconds: config.Production.TargetDurationSeconds,
 		},
 		CreatedAt: strings.TrimSpace(config.CreatedAt),
 	}

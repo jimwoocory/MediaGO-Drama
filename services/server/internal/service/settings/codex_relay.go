@@ -214,9 +214,6 @@ func (service *Settings) CheckCodexRelay(ctx context.Context, input CodexRelayCh
 	if err != nil {
 		return CodexRelayCheckResponse{}, err
 	}
-	if active.Protocol != CodexRelayProtocolResponses {
-		return CodexRelayCheckResponse{}, fmt.Errorf("%w: chat completions relay is not implemented yet", ErrCodexRelayInvalid)
-	}
 	upstreamURL, err := codexRelayUpstreamURL(active.BaseURL, "/v1/models")
 	if err != nil {
 		return CodexRelayCheckResponse{}, err
@@ -315,26 +312,56 @@ func (service *Settings) OpenCodexRelayRequest(ctx context.Context, method strin
 	if err != nil {
 		return nil, err
 	}
-	if active.Protocol != CodexRelayProtocolResponses {
-		return nil, fmt.Errorf("%w: chat completions relay is not implemented yet", ErrCodexRelayInvalid)
+	upstreamPath := relayPath
+	upstreamBody := body
+	responseStream := false
+	convertChatResponse := false
+	if active.Protocol == CodexRelayProtocolChatCompletions {
+		cleanPath := strings.SplitN(relayPath, "?", 2)[0]
+		switch cleanPath {
+		case "/v1/models", "/models":
+			// Model discovery is protocol-independent.
+		case "/v1/responses", "/responses":
+			if method != http.MethodPost {
+				return nil, fmt.Errorf("%w: chat completions adapter only supports POST /responses", ErrCodexRelayInvalid)
+			}
+			converted, stream, convertErr := codexRelayResponsesToChatRequest(body, active.Model)
+			if convertErr != nil {
+				return nil, convertErr
+			}
+			upstreamBody = converted
+			responseStream = stream
+			upstreamPath = "/v1/chat/completions"
+			convertChatResponse = true
+		default:
+			return nil, fmt.Errorf("%w: chat completions adapter does not support relay path %q", ErrCodexRelayInvalid, cleanPath)
+		}
 	}
-	upstreamURL, err := codexRelayUpstreamURL(active.BaseURL, relayPath)
+	var upstreamURL string
+	if convertChatResponse {
+		upstreamURL, err = codexRelayChatCompletionsUpstreamURL(active.BaseURL)
+	} else {
+		upstreamURL, err = codexRelayUpstreamURL(active.BaseURL, upstreamPath)
+	}
 	if err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(upstreamBody))
 	if err != nil {
 		return nil, fmt.Errorf("creating codex relay request: %w", err)
 	}
 	copyCodexRelayRequestHeaders(request.Header, headers)
 	request.Header.Set("Authorization", "Bearer "+apiKey)
-	if request.Header.Get("Content-Type") == "" && len(body) > 0 {
+	if request.Header.Get("Content-Type") == "" && len(upstreamBody) > 0 {
 		request.Header.Set("Content-Type", "application/json")
 	}
 	client := &http.Client{Timeout: codexRelayDefaultHTTPClient}
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("requesting codex relay upstream: %w", err)
+	}
+	if convertChatResponse {
+		return codexRelayChatResponseToResponses(response, responseStream)
 	}
 	return response, nil
 }
@@ -572,6 +599,25 @@ func codexRelayAllowedPath(path string) bool {
 			strings.HasPrefix(path, "/v1/models/") ||
 			strings.HasPrefix(path, "/models/")
 	}
+}
+
+func codexRelayChatCompletionsUpstreamURL(baseURL string) (string, error) {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" || !validHTTPURL(baseURL) {
+		return "", fmt.Errorf("%w: baseURL must be an http(s) URL", ErrCodexRelayInvalid)
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("%w: parsing baseURL: %v", ErrCodexRelayInvalid, err)
+	}
+	suffix := "/v1/chat/completions"
+	if strings.HasSuffix(parsed.Path, "/v1") {
+		suffix = "/chat/completions"
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + suffix
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), nil
 }
 
 func validCodexRelayLocalAuthorization(headers http.Header) bool {

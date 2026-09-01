@@ -50,6 +50,26 @@ func TestAPIHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("production profile inventory", func(t *testing.T) {
+		response := requestJSON(t, handler, http.MethodGet, "/api/v1/production-profiles", "")
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("status code = %d, want %d", response.StatusCode, http.StatusOK)
+		}
+		var envelope struct {
+			Data struct {
+				SchemaVersion int              `json:"schemaVersion"`
+				Profiles      []map[string]any `json:"profiles"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+			t.Fatalf("decoding production profile inventory: %v", err)
+		}
+		if envelope.Data.SchemaVersion != 1 || len(envelope.Data.Profiles) != 0 {
+			t.Fatalf("production profile inventory = %#v, want empty verified registry v1", envelope.Data)
+		}
+	})
+
 	t.Run("Codex skill inventory is read only and separate from prompt pack skills", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)

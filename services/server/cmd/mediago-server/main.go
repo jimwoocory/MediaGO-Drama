@@ -269,6 +269,9 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 	if config == nil {
 		return nil
 	}
+	if value := strings.TrimSpace(os.Getenv("MEDIAGO_WORKSPACE_DIR")); value != "" {
+		config.WorkspaceDir = value
+	}
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_AGENT_ID")); value != "" {
 		config.Agent.ID = value
 	}

@@ -844,6 +844,82 @@ func TestPrepareOpenCodeRuntimeConfigDoesNotFallbackToStaticMediagoModelsWhenUse
 	}
 }
 
+func TestPrepareOpenCodeRuntimeConfigUsesConfiguredAIHubMixModels(t *testing.T) {
+	var sawAuthorization string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/models" {
+			http.NotFound(writer, request)
+			return
+		}
+		sawAuthorization = request.Header.Get("Authorization")
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"data":[{"id":"deepseek-v4-pro"},{"id":"gpt-5.5"},{"id":"gpt-image-1"},{"id":"text-embedding-3-large"}]}`))
+	}))
+	defer server.Close()
+
+	settings := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+	settings.SetModelPlatforms([]string{})
+
+	unconfigured, err := settings.PrepareOpenCodeRuntimeConfig(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig without AIHubMix key returned error: %v", err)
+	}
+	if unconfigured.ProfileCount != 0 || len(unconfigured.AllowedModelValues) != 0 {
+		t.Fatalf("unconfigured AIHubMix runtime = %#v, want no visible models", unconfigured)
+	}
+
+	if _, err := settings.SetAIHubMixSettings(context.Background(), AIHubMixSettings{BaseURL: server.URL + "/v1/"}); err != nil {
+		t.Fatalf("SetAIHubMixSettings returned error: %v", err)
+	}
+	if _, err := settings.SetAPIKey(context.Background(), agentModelProviderAIHubMix, "sk-aihubmix-secret"); err != nil {
+		t.Fatalf("SetAPIKey returned error: %v", err)
+	}
+
+	config, err := settings.PrepareOpenCodeRuntimeConfig(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("PrepareOpenCodeRuntimeConfig returned error: %v", err)
+	}
+	if sawAuthorization != "Bearer sk-aihubmix-secret" {
+		t.Fatalf("Authorization = %q, want AIHubMix bearer key", sawAuthorization)
+	}
+	if config.ProfileCount != 2 {
+		t.Fatalf("ProfileCount = %d, want 2 available Agent-capable AIHubMix models", config.ProfileCount)
+	}
+	for _, want := range []string{"aihubmix/deepseek-v4-pro", "aihubmix/gpt-5.5"} {
+		if !stringSliceContains(config.AllowedModelValues, want) {
+			t.Fatalf("allowed model values = %#v, missing %q", config.AllowedModelValues, want)
+		}
+	}
+	if !stringSliceContains(config.AllowedModelProviders, agentModelProviderAIHubMix) {
+		t.Fatalf("allowed providers = %#v, want AIHubMix", config.AllowedModelProviders)
+	}
+	models, err := settings.ListConfiguredAgentCoreRuntimeModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListConfiguredAgentCoreRuntimeModels returned error: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("configured runtime models = %#v, want only 2 Agent-capable AIHubMix models", models)
+	}
+	for _, model := range models {
+		if strings.Contains(model.Value, "image") || strings.Contains(model.Value, "embedding") {
+			t.Fatalf("configured runtime models include task-only AIHubMix model: %#v", models)
+		}
+	}
+
+	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "opencode.json"))
+	if err != nil {
+		t.Fatalf("reading opencode.json: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `"baseURL": "`+server.URL+`/v1"`) {
+		t.Fatalf("opencode.json did not use persisted AIHubMix Base URL:\n%s", text)
+	}
+}
+
 func TestPrepareOpenCodeRuntimeConfigUsesLegacyOfficialProfileKey(t *testing.T) {
 	settings := NewSettingsWithAgentModelProfiles(
 		&memoryAPIKeyStore{values: map[string]string{

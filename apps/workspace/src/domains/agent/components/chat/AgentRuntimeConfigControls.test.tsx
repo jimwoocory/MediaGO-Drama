@@ -173,6 +173,27 @@ describe("AgentRuntimeConfigControls", () => {
 		expect(onModelChange).toHaveBeenCalledWith("minimax/minimax-m3");
 	});
 
+	it("labels providerless Codex models as the default Codex-GPT provider in a mixed menu", () => {
+		renderControls(
+			{
+				model: {
+					configId: "model",
+					currentValue: "gpt-5.5",
+					options: [
+						{ name: "GPT-5.5", value: "gpt-5.5" },
+						{ name: "AIHubMix/DeepSeek V4 Pro", value: "aihubmix/deepseek-v4-pro" },
+					],
+				},
+			},
+			{ modelValue: "gpt-5.5" },
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "模型" }));
+
+		expect(screen.getByRole("button", { name: "Codex-GPT" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "AIHubMix" })).toBeTruthy();
+	});
+
 	it("uses the standard select for providerless model options", async () => {
 		renderControls(
 			{

@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -15,6 +16,8 @@ const (
 	ModelPlatformOpenRouter = generation.ProviderOpenRouter
 	// ModelPlatformDMXAPI is the DMXAPI aggregation platform.
 	ModelPlatformDMXAPI = "dmxapi"
+	// ModelPlatformAIHubMix is the AIHubMix OpenAI-compatible aggregation platform.
+	ModelPlatformAIHubMix = agentModelProviderAIHubMix
 	// ModelPlatformJimeng is the local Dreamina/Jimeng CLI platform.
 	ModelPlatformJimeng = generation.ProviderJimeng
 	// ModelPlatformLibTV is the local LibTV CLI platform.
@@ -80,6 +83,13 @@ func modelPlatformSpecs() []modelPlatformSpec {
 			APIKeyProviderID: generation.ProviderDMX,
 		},
 		{
+			ID:               ModelPlatformAIHubMix,
+			Label:            "AIHubMix",
+			Kind:             "custom",
+			Description:      "AIHubMix OpenAI-compatible 聚合接口",
+			APIKeyProviderID: agentModelProviderAIHubMix,
+		},
+		{
 			ID:               ModelPlatformJimeng,
 			Label:            "即梦",
 			Kind:             "cli",
@@ -127,6 +137,73 @@ func (service *Settings) MediagoBaseURL() string {
 		return ""
 	}
 	return strings.TrimRight(strings.TrimSpace(service.mediagoBaseURL), "/")
+}
+
+const (
+	aihubmixBaseURLSettingKey = "agent.aihubmix.base_url"
+	defaultAIHubMixBaseURL    = "https://aihubmix.com/v1"
+)
+
+// AIHubMixSettings stores the editable AIHubMix OpenAI-compatible endpoint.
+type AIHubMixSettings struct {
+	BaseURL string `json:"baseURL"`
+}
+
+// GetAIHubMixSettings returns the persisted AIHubMix endpoint, falling back to the official default.
+func (service *Settings) GetAIHubMixSettings(ctx context.Context) (AIHubMixSettings, error) {
+	_ = ctx
+	if service == nil || service.appSettings == nil {
+		return AIHubMixSettings{BaseURL: defaultAIHubMixBaseURL}, nil
+	}
+	value, _, err := service.appSettings.GetAppSetting(aihubmixBaseURLSettingKey)
+	if err != nil {
+		return AIHubMixSettings{}, err
+	}
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	if value == "" {
+		value = defaultAIHubMixBaseURL
+	}
+	return AIHubMixSettings{BaseURL: value}, nil
+}
+
+// SetAIHubMixSettings validates and persists the AIHubMix endpoint.
+func (service *Settings) SetAIHubMixSettings(ctx context.Context, input AIHubMixSettings) (AIHubMixSettings, error) {
+	_ = ctx
+	if service == nil || service.appSettings == nil {
+		return AIHubMixSettings{}, ErrAppSettingStoreMissing
+	}
+	baseURL, err := normalizeOpenAICompatibleBaseURL(input.BaseURL)
+	if err != nil {
+		return AIHubMixSettings{}, fmt.Errorf("%w: %v", ErrAgentModelInvalid, err)
+	}
+	if err := service.appSettings.SetAppSetting(aihubmixBaseURLSettingKey, baseURL); err != nil {
+		return AIHubMixSettings{}, err
+	}
+	return AIHubMixSettings{BaseURL: baseURL}, nil
+}
+
+// AIHubMixBaseURL returns the endpoint used by MediaGo Agent Core at runtime.
+func (service *Settings) AIHubMixBaseURL() string {
+	settings, err := service.GetAIHubMixSettings(context.Background())
+	if err != nil || strings.TrimSpace(settings.BaseURL) == "" {
+		return defaultAIHubMixBaseURL
+	}
+	return strings.TrimRight(strings.TrimSpace(settings.BaseURL), "/")
+}
+
+func normalizeOpenAICompatibleBaseURL(value string) (string, error) {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	if value == "" {
+		return "", fmt.Errorf("Base URL is required")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("Base URL must be an absolute HTTP or HTTPS URL")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("Base URL must not include credentials, query parameters, or fragments")
+	}
+	return value, nil
 }
 
 // ParseModelPlatformIDs parses a comma-separated model platform list.

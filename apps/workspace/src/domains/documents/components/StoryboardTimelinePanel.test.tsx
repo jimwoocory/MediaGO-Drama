@@ -31,6 +31,40 @@ describe("StoryboardTimelinePanel", () => {
 
 	it("defers resolved storyboard timeline loading until the panel is expanded", () => {
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (key === "/production-profiles") {
+				return {
+					data: {
+						schemaVersion: 1,
+						profiles: [
+							{
+								id: "mode-a",
+								label: "测试模式",
+								description: "fixture",
+								version: 1,
+							},
+						],
+					},
+					isLoading: false,
+				} as never;
+			}
+			if (key === "/projects/project-a/config") {
+				return {
+					data: {
+						createdAt: "2026-08-31T00:00:00Z",
+						description: "",
+						name: "project-a",
+						overview: { categoryDefaults: {} },
+						production: {
+							profileId: "mode-a",
+							schemaVersion: 1,
+							targetDurationSeconds: 900,
+						},
+						projectId: "project-a",
+						schemaVersion: 1,
+					},
+					isLoading: false,
+				} as never;
+			}
 			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
 				return {
 					data: {
@@ -74,7 +108,7 @@ describe("StoryboardTimelinePanel", () => {
 			<StoryboardTimelinePanel
 				documentId="doc-a"
 				documentTitle="第一章 分镜脚本"
-				documentContent={"# 第一章\n\n".repeat(500)}
+				documentContent={["# 第一章", "", "## 开场落水", "", "时长：5秒", "动作：推镜"].join("\n")}
 			/>,
 		);
 
@@ -82,10 +116,17 @@ describe("StoryboardTimelinePanel", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "展开分镜同步面板" }));
 
-		expect(useSWR).toHaveBeenLastCalledWith(
+		expect(useSWR).toHaveBeenCalledWith(
 			["workspace-resolved-episode", "project-a", "doc-a"],
 			expect.any(Function),
 		);
+		expect(useSWR).toHaveBeenCalledWith("/production-profiles", expect.any(Function));
+		expect((screen.getByLabelText("制作模式") as HTMLSelectElement).disabled).toBe(false);
+		expect(screen.getByText("分镜制作")).toBeTruthy();
+		expect(screen.getByText("ProductionShot v1")).toBeTruthy();
+		expect(screen.getByText("模式 · mode-a")).toBeTruthy();
+		expect(screen.getByText("目标 · 15:00")).toBeTruthy();
+		expect(screen.getByText(/1 个组 · 1 镜头 · 00:05/)).toBeTruthy();
 		expect(screen.getByText("开场落水")).toBeTruthy();
 	});
 });

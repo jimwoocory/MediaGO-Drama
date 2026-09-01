@@ -16,6 +16,7 @@ type Handlers struct {
 	Billing               httphandlers.Billing
 	MediaAssets           httphandlers.MediaAssets
 	ProjectAssets         httphandlers.ProjectAssets
+	ProductionProfiles    httphandlers.ProductionProfiles
 	AgentBackends         httphandlers.AgentBackends
 	Projects              httphandlers.Projects
 	ProjectConfigs        httphandlers.ProjectConfigs
@@ -62,6 +63,7 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/billing/summary", handlers.Billing.HandleBillingSummary)
 	apiRoutes.GET("/projects", handlers.Projects.HandleListProjects)
 	apiRoutes.POST("/projects", handlers.Projects.HandleCreateProject)
+	apiRoutes.GET("/production-profiles", handlers.ProductionProfiles.HandleListProductionProfiles)
 	apiRoutes.GET("/packs", handlers.PromptPacks.HandleListPacks)
 	apiRoutes.POST("/packs", handlers.PromptPacks.HandleCreatePack)
 	apiRoutes.POST("/packs/import", handlers.PromptPacks.HandleImportPack)
@@ -145,6 +147,10 @@ func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 		handlers.Settings.HandleDeleteCodexRelayProfileAPIKey,
 	)
 	apiRoutes.GET("/settings/model-platforms", handlers.Settings.HandleModelPlatforms)
+	apiRoutes.GET("/settings/aihubmix", handlers.Settings.HandleAIHubMixSettings)
+	apiRoutes.PUT("/settings/aihubmix", handlers.Settings.HandlePutAIHubMixSettings)
+	apiRoutes.GET("/settings/speech-api", handlers.Settings.HandleSpeechAPISettings)
+	apiRoutes.PUT("/settings/speech-api", handlers.Settings.HandlePutSpeechAPISettings)
 	apiRoutes.GET("/settings/api-keys", handlers.Settings.HandleAPIKeys)
 	apiRoutes.PUT("/settings/api-keys/:provider", handlers.Settings.HandlePutAPIKey)
 	apiRoutes.DELETE("/settings/api-keys/:provider", handlers.Settings.HandleDeleteAPIKey)

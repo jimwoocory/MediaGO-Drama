@@ -6,22 +6,38 @@ const maximumRendererURLLength = 4_096;
 
 export const rendererProtocolScheme = rendererProtocol.slice(0, -1);
 
-export const rendererContentSecurityPolicy = [
-	"default-src 'self'",
-	"base-uri 'none'",
-	"form-action 'none'",
-	"frame-ancestors 'none'",
-	"frame-src 'none'",
-	"object-src 'none'",
-	"script-src 'self'",
-	"style-src 'self' 'unsafe-inline'",
-	"font-src 'self' data: https:",
-	"img-src 'self' data: blob: http: https:",
-	"media-src 'self' data: blob: http: https:",
-	"connect-src 'self' http://127.0.0.1:48273 https: wss:",
-	"worker-src 'self' blob:",
-	"manifest-src 'self'",
-].join("; ");
+const fallbackLocalServerOrigin = "http://127.0.0.1:48273";
+
+const safeLocalServerOrigin = (value?: string): string => {
+	if (!value) return fallbackLocalServerOrigin;
+	try {
+		const url = new URL(value);
+		if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port) {
+			return fallbackLocalServerOrigin;
+		}
+		return url.origin;
+	} catch {
+		return fallbackLocalServerOrigin;
+	}
+};
+
+export const rendererContentSecurityPolicy = (localServerOrigin?: string) =>
+	[
+		"default-src 'self'",
+		"base-uri 'none'",
+		"form-action 'none'",
+		"frame-ancestors 'none'",
+		"frame-src 'none'",
+		"object-src 'none'",
+		"script-src 'self'",
+		"style-src 'self' 'unsafe-inline'",
+		"font-src 'self' data: https:",
+		"img-src 'self' data: blob: http: https:",
+		"media-src 'self' data: blob: http: https:",
+		`connect-src 'self' ${safeLocalServerOrigin(localServerOrigin)} https: wss:`,
+		"worker-src 'self' blob:",
+		"manifest-src 'self'",
+	].join("; ");
 
 export const resolveRendererAssetPath = (
 	requestURL: string,

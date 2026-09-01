@@ -40,12 +40,19 @@ export interface ProjectOverviewConfig {
 	categoryDefaults?: ProjectCategoryDefaults;
 }
 
+export interface ProjectProductionConfig {
+	schemaVersion: 1;
+	profileId?: string;
+	targetDurationSeconds?: number;
+}
+
 export interface ProjectConfig {
 	schemaVersion: 1;
 	projectId: string;
 	name: string;
 	description: string;
 	overview: ProjectOverviewConfig;
+	production: ProjectProductionConfig;
 	createdAt: string;
 }
 
@@ -53,8 +60,14 @@ export interface ProjectOverviewConfigPatch {
 	categoryDefaults?: ProjectCategoryDefaults | null;
 }
 
+export interface ProjectProductionConfigPatch {
+	profileId?: string;
+	targetDurationSeconds?: number;
+}
+
 export interface ProjectConfigPatch {
 	overview?: ProjectOverviewConfigPatch | null;
+	production?: ProjectProductionConfigPatch | null;
 }
 
 export interface ProjectConfigMutationResult {
@@ -172,6 +185,15 @@ const normalizeProjectConfig = (config: Partial<ProjectConfig> | undefined): Pro
 	description: config?.description ?? "",
 	overview: {
 		categoryDefaults: config?.overview?.categoryDefaults ?? {},
+	},
+	production: {
+		schemaVersion: 1,
+		profileId: config?.production?.profileId?.trim() || undefined,
+		targetDurationSeconds:
+			typeof config?.production?.targetDurationSeconds === "number" &&
+			config.production.targetDurationSeconds >= 0
+				? config.production.targetDurationSeconds
+				: undefined,
 	},
 	createdAt: config?.createdAt ?? "",
 });

@@ -17,6 +17,9 @@ func TestAgentBackendServiceDefaultsToCodex(t *testing.T) {
 	if len(payload.Backends) != 2 {
 		t.Fatalf("len(Backends) = %d, want 2", len(payload.Backends))
 	}
+	if payload.Backends[0].Name != "Codex Harness" || payload.Backends[1].Name != "MediaGo Agent Core" {
+		t.Fatalf("builtin backend names = %q, %q", payload.Backends[0].Name, payload.Backends[1].Name)
+	}
 	if command := store.ActiveCommand(); command != "codex-acp" {
 		t.Fatalf("ActiveCommand() = %q, want codex-acp", command)
 	}
