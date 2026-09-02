@@ -188,6 +188,7 @@ func run(args []string) error {
 		DocumentMCPConfigPath:      configPath,
 		AgentBridgeURL:             internalAPIURL + "/api/v1/internal/agent/spawn",
 		AgentBridgeToken:           bridgeToken,
+		AgentMaxSessionTurns:       config.Agent.MaxSessionTurns,
 		PromptMaxSectionChars:      config.Prompt.MaxSectionChars,
 		PromptDelivery:             config.Prompt.InstructionDelivery,
 		BillingPrices:              billingPrices,

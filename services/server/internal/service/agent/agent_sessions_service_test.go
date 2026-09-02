@@ -253,6 +253,48 @@ func TestSessionServicePersistsAndClearsACPInstructionState(t *testing.T) {
 	}
 }
 
+func TestSessionServiceRotatesACPContextAfterBoundedTurns(t *testing.T) {
+	store := NewSessionService(nil)
+	store.create("session-1", "project-1")
+	options := AgentRunStartOptions{MaxACPSessionTurns: 2}
+
+	first, ok := store.StartRun("session-1", "project-1", "run-1", func() {}, options)
+	if !ok || first.SessionID != "" {
+		t.Fatalf("first ACP state = %#v, ok=%v; want blank new session", first, ok)
+	}
+	store.SetACPSessionState("session-1", "run-1", ACPSessionState{SessionID: "acp-1", InstructionHash: "v1"})
+	store.FinishRun("session-1", "run-1", "completed", "done")
+
+	second, ok := store.StartRun("session-1", "project-1", "run-2", func() {}, options)
+	if !ok || second.SessionID != "acp-1" {
+		t.Fatalf("second ACP state = %#v, ok=%v; want reuse acp-1", second, ok)
+	}
+	store.SetACPSessionState("session-1", "run-2", ACPSessionState{SessionID: "acp-1", InstructionHash: "v1"})
+	store.FinishRun("session-1", "run-2", "completed", "done")
+
+	third, ok := store.StartRun("session-1", "project-1", "run-3", func() {}, options)
+	if !ok || third.SessionID != "" || third.InstructionHash != "" {
+		t.Fatalf("third ACP state = %#v, ok=%v; want rotation to blank state", third, ok)
+	}
+	store.SetACPSessionState("session-1", "run-3", ACPSessionState{SessionID: "acp-2", InstructionHash: "v1"})
+	store.FinishRun("session-1", "run-3", "completed", "done")
+
+	fourth, ok := store.StartRun("session-1", "project-1", "run-4", func() {}, options)
+	if !ok || fourth.SessionID != "acp-2" {
+		t.Fatalf("fourth ACP state = %#v, ok=%v; want reuse fresh acp-2", fourth, ok)
+	}
+}
+
+func TestShouldRotateACPSessionTreatsUnknownPersistedContextAsOverBudget(t *testing.T) {
+	session := &agentSession{ACPSessionID: "acp-old", acpSessionTurns: -1}
+	if !shouldRotateACPSession(session, 4) {
+		t.Fatal("unknown persisted ACP context should rotate when a bound is configured")
+	}
+	if shouldRotateACPSession(session, 0) {
+		t.Fatal("disabled bound should preserve the ACP context")
+	}
+}
+
 func newTestAgentSessionRepository(t *testing.T) *repository.AgentSessionRepository {
 	t.Helper()
 	db, err := repository.OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))

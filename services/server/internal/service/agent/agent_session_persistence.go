@@ -56,11 +56,16 @@ func (store *SessionService) loadSessionUnlocked(sessionID string) (*agentSessio
 		return nil, false
 	}
 
+	acpSessionTurns := 0
+	if strings.TrimSpace(sessionModel.ACPSessionID) != "" {
+		acpSessionTurns = -1
+	}
 	session := &agentSession{
 		projectID:          sessionModel.ProjectID,
 		title:              sessionModel.Title,
 		ACPSessionID:       sessionModel.ACPSessionID,
 		ACPInstructionHash: sessionModel.ACPInstructionHash,
+		acpSessionTurns:    acpSessionTurns,
 		runs:               map[string]*AgentRun{},
 		lastStatus:         sessionModel.LastStatus,
 		lastMessage:        sessionModel.LastMessage,

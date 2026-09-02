@@ -22,6 +22,7 @@ type agentSession struct {
 	title              string
 	ACPSessionID       string
 	ACPInstructionHash string
+	acpSessionTurns    int
 	runs               map[string]*AgentRun
 	lastRootRunID      string
 	lastStatus         string
@@ -45,7 +46,8 @@ type ACPSessionState struct {
 }
 
 type AgentRunStartOptions struct {
-	AgentTag string
+	AgentTag           string
+	MaxACPSessionTurns int
 }
 
 type AgentRunFinishResult struct {
@@ -281,6 +283,12 @@ func (store *SessionService) StartRun(
 			InstructionHash: session.ACPInstructionHash,
 		}, false
 	}
+	if shouldRotateACPSession(session, options.MaxACPSessionTurns) {
+		session.ACPSessionID = ""
+		session.ACPInstructionHash = ""
+		session.acpSessionTurns = 0
+		store.persistSessionUnlocked(sessionID, session)
+	}
 	session.lastRootRunID = RunID
 	session.lastStatus = "running"
 	session.lastMessage = "Agent 运行中。"
@@ -462,6 +470,11 @@ func (store *SessionService) SetACPSessionState(sessionID string, RunID string, 
 	}
 	run.ACPSessionID = strings.TrimSpace(state.SessionID)
 	run.ACPInstructionHash = strings.TrimSpace(state.InstructionHash)
+	if session.ACPSessionID == run.ACPSessionID && session.acpSessionTurns >= 0 {
+		session.acpSessionTurns++
+	} else {
+		session.acpSessionTurns = 1
+	}
 	session.ACPSessionID = run.ACPSessionID
 	session.ACPInstructionHash = run.ACPInstructionHash
 	store.persistSessionUnlocked(sessionID, session)
@@ -491,7 +504,17 @@ func (store *SessionService) ClearACPSessionID(sessionID string) {
 	}
 	session.ACPSessionID = ""
 	session.ACPInstructionHash = ""
+	session.acpSessionTurns = 0
 	store.persistSessionUnlocked(sessionID, session)
+}
+
+func shouldRotateACPSession(session *agentSession, maxTurns int) bool {
+	if session == nil || maxTurns <= 0 || strings.TrimSpace(session.ACPSessionID) == "" {
+		return false
+	}
+	// A persisted ACP session loaded after a server restart has unknown prior
+	// turn count (-1). Rotate it once instead of resuming an unbounded context.
+	return session.acpSessionTurns < 0 || session.acpSessionTurns >= maxTurns
 }
 
 func (store *SessionService) Status(sessionID string) AgentSessionStatus {

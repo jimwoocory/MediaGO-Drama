@@ -179,7 +179,6 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		})
 	}
 	sessionID := acp.SessionId(strings.TrimSpace(request.ACPSessionID))
-	hadPriorACPSession := sessionID != ""
 	reusedACPSession := false
 	if sessionID != "" && !instructionHashMatches(request.ACPInstructionHash, currentInstructionHash) {
 		acpLog().Info(
@@ -257,10 +256,11 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 
 	prompt := runner.buildPromptForRequest(request, fixedInstructions, processConfig.NativeInstructionsInjected)
 	recapInjected := false
-	// A continuation whose previous ACP session could not be reused starts
-	// from a blank session: replay a compact transcript recap so decisions the
-	// user already made (target resource, style, params) survive the rebuild.
-	if hadPriorACPSession && !reusedACPSession {
+	// Any newly created ACP session may be a bounded-context rotation, a
+	// recovery from a dead upstream session, or the first ACP attachment for an
+	// existing MediaGo conversation. Replay the compact recap when history exists
+	// so continuity survives without resuming an unbounded provider context.
+	if !reusedACPSession {
 		if recap := runner.sessionRecapFor(ctx, request); recap != "" {
 			prompt = recap + "\n\n" + prompt
 			recapInjected = true

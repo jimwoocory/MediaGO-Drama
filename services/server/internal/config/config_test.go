@@ -15,6 +15,8 @@ log_path: " /tmp/mediago-server.log "
 log_level: " debug "
 workspace_dir: " /tmp/media-workspace "
 acp_command: " codex-acp --model test "
+agent:
+  max_session_turns: 7
 generation_clis:
   - " libtv "
   - " pippit "
@@ -62,6 +64,7 @@ document_mcp:
 		config.LogLevel != "debug" ||
 		config.WorkspaceDir != "/tmp/media-workspace" ||
 		config.ACPCommand != "codex-acp --model test" ||
+		config.Agent.MaxSessionTurns != 7 ||
 		len(config.GenerationCLIs) != 2 ||
 		config.GenerationCLIs[0] != "libtv" ||
 		config.GenerationCLIs[1] != "pippit" ||
@@ -98,6 +101,7 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if config.Host != "127.0.0.1" ||
 		config.Port != 8080 ||
+		config.Agent.MaxSessionTurns != 4 ||
 		config.Prompt.MaxSectionChars != 12000 ||
 		config.Prompt.InstructionDelivery != "native" ||
 		len(config.GenerationCLIs) != 1 ||

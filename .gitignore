@@ -44,3 +44,6 @@ ds-bundle/
 /tmp
 .cache
 .commercial/
+
+# AI validation logs (full command output stays out of model context)
+.agent-logs/

@@ -21,6 +21,11 @@ import (
 // DefaultAgentRunTimeout disables the wall-clock timeout for one agent run.
 const DefaultAgentRunTimeout time.Duration = 0
 
+// DefaultMaxACPSessionTurns bounds how many successful turns reuse one backend
+// ACP session before the runtime intentionally starts a fresh session with a
+// compact recap. The ACP process itself may remain resident.
+const DefaultMaxACPSessionTurns = 4
+
 // AgentRunner executes one normalized agent request.
 type AgentRunner interface {
 	Run(context.Context, AgentRunRequest, func(AgentEvent)) (AgentRunResult, error)
@@ -80,6 +85,7 @@ type DocumentStore interface {
 type AgentRuntimeConfig struct {
 	WorkspaceDir          string
 	RunTimeout            time.Duration
+	MaxACPSessionTurns    int
 	BridgeURL             string
 	BridgeToken           string
 	DocumentMCPConfigPath string
@@ -114,6 +120,9 @@ func NewAgentRuntime(
 ) *AgentRuntime {
 	if config.SessionTitleTimeout <= 0 {
 		config.SessionTitleTimeout = 30 * time.Second
+	}
+	if config.MaxACPSessionTurns <= 0 {
+		config.MaxACPSessionTurns = DefaultMaxACPSessionTurns
 	}
 	if config.WorkspaceDir == "" && workspace != nil {
 		config.WorkspaceDir = workspace.Dir()
@@ -217,7 +226,8 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 		runID,
 		cancelRun,
 		AgentRunStartOptions{
-			AgentTag: payload.AgentTag,
+			AgentTag:           payload.AgentTag,
+			MaxACPSessionTurns: runtime.config.MaxACPSessionTurns,
 		},
 	)
 	if !ok {

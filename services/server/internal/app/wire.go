@@ -359,6 +359,7 @@ func newAPIHandler(config Config) *apiHandler {
 		serviceagent.AgentRuntimeConfig{
 			WorkspaceDir:          workspaceState.Dir(),
 			RunTimeout:            agentRunTimeout,
+			MaxACPSessionTurns:    config.AgentMaxSessionTurns,
 			BridgeURL:             agentBridgeURL,
 			BridgeToken:           agentBridgeToken,
 			DocumentMCPConfigPath: config.DocumentMCPConfigPath,

@@ -32,8 +32,9 @@ type ServerConfig struct {
 
 // AgentConfig contains ACP agent binary selection and vendored bin settings.
 type AgentConfig struct {
-	ID     string `yaml:"id"`
-	BinDir string `yaml:"bin_dir"`
+	ID              string `yaml:"id"`
+	BinDir          string `yaml:"bin_dir"`
+	MaxSessionTurns int    `yaml:"max_session_turns"`
 }
 
 // FFmpegConfig contains ffmpeg binary selection and vendored bin settings.
@@ -101,6 +102,9 @@ func defaults() ServerConfig {
 		Host:           "127.0.0.1",
 		Port:           8080,
 		GenerationCLIs: []string{"dreamina"},
+		Agent: AgentConfig{
+			MaxSessionTurns: 4,
+		},
 		Prompt: PromptConfig{
 			MaxSectionChars:     12000,
 			InstructionDelivery: "native",
@@ -142,6 +146,9 @@ func normalize(config ServerConfig) ServerConfig {
 func normalizeAgentConfig(config AgentConfig) AgentConfig {
 	config.ID = strings.TrimSpace(config.ID)
 	config.BinDir = strings.TrimSpace(config.BinDir)
+	if config.MaxSessionTurns <= 0 {
+		config.MaxSessionTurns = defaults().Agent.MaxSessionTurns
+	}
 	return config
 }
 
