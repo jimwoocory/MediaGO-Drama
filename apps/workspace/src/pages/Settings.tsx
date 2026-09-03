@@ -164,7 +164,15 @@ export const Settings: React.FC = () => {
 	);
 };
 
-const APIKeysPanel: React.FC = () => {
+export const APIKeysPanel: React.FC<{
+	title?: string;
+	description?: string;
+	onOpenCodexAccess?: () => void;
+}> = ({
+	title = "API 密钥",
+	description = "Agent、图片、音频、视频按 Provider 能力独立接入；统一 API 默认使用 AIHubMix，本地与会员通道继续保留。",
+	onOpenCodexAccess,
+}) => {
 	const toast = useToast();
 	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data, mutate, isLoading } = useSWR(apiKeysKey, getAPIKeys);
@@ -595,7 +603,11 @@ const APIKeysPanel: React.FC = () => {
 	]);
 	const selectProviderFromMatrix = (providerID: string, target: ProviderCapabilityTarget) => {
 		if (target === "codex-access") {
-			useSettingsNavigationStore.getState().setActiveTab("codex-access");
+			if (onOpenCodexAccess) {
+				onOpenCodexAccess();
+			} else {
+				useSettingsNavigationStore.getState().setActiveTab("codex-access");
+			}
 			return;
 		}
 		if (otherProviderIDs.has(providerID)) {
@@ -620,8 +632,8 @@ const APIKeysPanel: React.FC = () => {
 
 	return (
 		<SettingsPanelLayout
-			title="API 密钥"
-			description="Agent、图片、音频、视频按 Provider 能力独立接入；统一 API 默认使用 AIHubMix，本地与会员通道继续保留。"
+			title={title}
+			description={description}
 			icon={<KeyRound className="size-4" />}
 		>
 			<div className="mx-auto w-full max-w-5xl divide-y divide-border">
