@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	exists: true,
 	isPackaged: false,
+	mkdirSync: vi.fn(),
+	readdirSync: vi.fn(() => [] as string[]),
 	spawn: vi.fn(),
 }));
 
@@ -17,7 +19,18 @@ vi.mock("node:fs", () => {
 	const readFileSync = () => {
 		throw new Error("no packaged config in unit test");
 	};
-	return { default: { existsSync, readFileSync }, existsSync, readFileSync };
+	return {
+		default: {
+			existsSync,
+			mkdirSync: mocks.mkdirSync,
+			readFileSync,
+			readdirSync: mocks.readdirSync,
+		},
+		existsSync,
+		mkdirSync: mocks.mkdirSync,
+		readFileSync,
+		readdirSync: mocks.readdirSync,
+	};
 });
 vi.mock("./paths.js", () => ({
 	agentsDir: () => "/resources/agents",
@@ -48,6 +61,9 @@ describe("server sidecar lifecycle", () => {
 		vi.resetModules();
 		mocks.exists = true;
 		mocks.spawn.mockReset();
+		mocks.mkdirSync.mockReset();
+		mocks.readdirSync.mockReset();
+		mocks.readdirSync.mockReturnValue([]);
 		mocks.isPackaged = false;
 		delete process.env.ELECTRON_RENDERER_URL;
 	});
@@ -55,6 +71,17 @@ describe("server sidecar lifecycle", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.restoreAllMocks();
+	});
+
+	it("creates the isolated Codex home for packaged MediaGo", async () => {
+		mocks.isPackaged = true;
+		const sidecar = await import("./sidecar.js");
+
+		sidecar.preparePackagedWorkspace();
+
+		const workspace = join(dirname(process.execPath), "data", "workspace");
+		expect(mocks.mkdirSync).toHaveBeenCalledWith(workspace, { recursive: true });
+		expect(mocks.mkdirSync).toHaveBeenCalledWith(join(workspace, ".codex"), { recursive: true });
 	});
 
 	it("starts the builtin server without an integrity manifest", async () => {

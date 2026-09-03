@@ -44,7 +44,7 @@ export const CodexAccessPanel: React.FC = () => {
 				setAttempt(next);
 				if (next.status === "completed") {
 					await refreshAccount();
-					toast.success("ChatGPT 登录成功", { description: "已复用全局 Codex 登录态。" });
+					toast.success("ChatGPT 登录成功", { description: "MediaGo 独立 Codex 已授权。" });
 				} else if (next.status !== "pending" && next.status !== "canceled") {
 					toast.error("ChatGPT 登录失败", { description: next.error || "请重新发起登录。" });
 				}
@@ -105,7 +105,7 @@ export const CodexAccessPanel: React.FC = () => {
 		try {
 			const next = await logoutCodexAccount();
 			await mutate(next, false);
-			toast.success("已退出全局 Codex 账号");
+			toast.success("已退出 MediaGo Codex");
 			return true;
 		} catch (error) {
 			toast.error("退出失败", { description: errorMessage(error) });
@@ -117,9 +117,9 @@ export const CodexAccessPanel: React.FC = () => {
 
 	const confirmLogout = () => {
 		void confirmDialog({
-			title: "退出全局 Codex 账号？",
-			description: "退出后，共享同一 Codex 目录的 CLI、IDE 和其他客户端也需要重新登录。",
-			confirmLabel: "退出全局账号",
+			title: "退出 MediaGo Codex？",
+			description: "只清除 MediaGo 独立 CODEX_HOME 中的授权，不影响系统全局 Codex。",
+			confirmLabel: "退出 MediaGo Codex",
 			confirmIcon: <LogOut />,
 			onConfirm: logout,
 		});
@@ -140,7 +140,7 @@ export const CodexAccessPanel: React.FC = () => {
 	return (
 		<CodexRelayPanel
 			title="Codex 接入"
-			description="选择 ChatGPT 官方订阅，或通过中转平台接入 Codex。"
+			description="可手动授权或退出 MediaGo 独立 Codex，也可通过中转平台接入 Codex。"
 			officialChannel={{
 				status,
 				email: account?.email,
@@ -150,6 +150,7 @@ export const CodexAccessPanel: React.FC = () => {
 				onLogin: () => void startLogin(),
 				onLogout: confirmLogout,
 				onReopen: () => void reopenLogin(),
+				onRefresh: () => void refreshAccount(),
 			}}
 		/>
 	);

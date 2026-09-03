@@ -9,6 +9,7 @@ import {
 	Pencil,
 	Plus,
 	Route,
+	RefreshCw,
 	Trash2,
 	Wifi,
 	X,
@@ -59,6 +60,7 @@ export interface CodexOfficialChannel {
 	onLogin: () => void;
 	onLogout: () => void;
 	onReopen: () => void;
+	onRefresh: () => void;
 	status: OfficialChannelStatus;
 }
 
@@ -505,12 +507,23 @@ const OfficialChannelCard: React.FC<{
 						onClick={channel.onLogout}
 					>
 						<LogOut />
-						退出全局账号
+						退出 MediaGo Codex
 					</Button>
 				) : channel.status === "loggedOut" ? (
 					<Button type="button" size="sm" disabled={channel.busy} onClick={channel.onLogin}>
 						<LogIn />
-						使用 ChatGPT 登录
+						授权登录
+					</Button>
+				) : channel.status === "error" ? (
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						disabled={channel.busy}
+						onClick={channel.onRefresh}
+					>
+						<RefreshCw />
+						重新检测
 					</Button>
 				) : null}
 			</div>

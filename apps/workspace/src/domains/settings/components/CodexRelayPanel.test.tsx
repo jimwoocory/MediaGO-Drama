@@ -515,6 +515,7 @@ const officialChannel = (): CodexOfficialChannel => ({
 	onLogin: vi.fn(),
 	onLogout: vi.fn(),
 	onReopen: vi.fn(),
+	onRefresh: vi.fn(),
 	status: "loggedIn",
 });
 

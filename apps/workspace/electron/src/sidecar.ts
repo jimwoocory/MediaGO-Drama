@@ -31,8 +31,10 @@ const directoryHasEntries = (path: string): boolean => {
 export const preparePackagedWorkspace = () => {
 	if (!isPackaged()) return;
 	const target = portableWorkspaceDir();
-	if (directoryHasEntries(target)) return;
-	mkdirSync(target, { recursive: true });
+	if (!directoryHasEntries(target)) mkdirSync(target, { recursive: true });
+	// Codex 0.144+ refuses to start when CODEX_HOME points to a missing directory.
+	// Keep MediaGo isolated from the host Codex account, but create its private home eagerly.
+	mkdirSync(join(target, ".codex"), { recursive: true });
 };
 
 export const startServerSidecar = async (): Promise<SidecarConnection | null> => {

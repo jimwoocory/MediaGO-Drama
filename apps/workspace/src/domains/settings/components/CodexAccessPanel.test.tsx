@@ -36,6 +36,7 @@ vi.mock("@/domains/settings/components/CodexRelayPanel", () => ({
 			onLogin: () => void;
 			onLogout: () => void;
 			onReopen: () => void;
+			onRefresh: () => void;
 			status: string;
 		};
 		title?: unknown;
@@ -46,17 +47,22 @@ vi.mock("@/domains/settings/components/CodexRelayPanel", () => ({
 			<p>{officialChannel?.detail}</p>
 			{officialChannel?.status === "loggedIn" ? (
 				<button type="button" onClick={officialChannel.onLogout}>
-					退出全局账号
+					退出 MediaGo Codex
 				</button>
 			) : null}
 			{officialChannel?.status === "loggedOut" ? (
 				<button type="button" onClick={officialChannel.onLogin}>
-					使用 ChatGPT 登录
+					授权登录
 				</button>
 			) : null}
 			{officialChannel?.status === "pending" ? (
 				<button type="button" onClick={officialChannel.onReopen}>
 					重新打开浏览器
+				</button>
+			) : null}
+			{officialChannel?.status === "error" ? (
+				<button type="button" onClick={officialChannel.onRefresh}>
+					重新检测
 				</button>
 			) : null}
 		</div>
@@ -94,8 +100,16 @@ describe("CodexAccessPanel", () => {
 
 		expect(await screen.findByText("user@example.com")).toBeInTheDocument();
 		expect(screen.getByText("ChatGPT Plus · /Users/test/.codex")).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "退出全局账号" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "退出 MediaGo Codex" })).toBeInTheDocument();
 		expect(beginCodexAccountLogin).not.toHaveBeenCalled();
+	});
+
+	it("offers manual recheck when the Codex account service is unavailable", async () => {
+		vi.mocked(getCodexAccount).mockRejectedValue(new Error("Codex service unavailable"));
+
+		renderPanel();
+
+		expect(await screen.findByRole("button", { name: "重新检测" })).toBeInTheDocument();
 	});
 
 	it("opens the browser URL returned by bundled Codex", async () => {
@@ -116,7 +130,7 @@ describe("CodexAccessPanel", () => {
 		});
 
 		renderPanel();
-		fireEvent.click(await screen.findByRole("button", { name: "使用 ChatGPT 登录" }));
+		fireEvent.click(await screen.findByRole("button", { name: "授权登录" }));
 
 		await waitFor(() =>
 			expect(openExternalUrl).toHaveBeenCalledWith("https://chatgpt.com/auth/test"),
