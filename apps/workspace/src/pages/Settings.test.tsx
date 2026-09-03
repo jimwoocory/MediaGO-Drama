@@ -100,8 +100,8 @@ describe("Settings API key page", () => {
 		expect(screen.getByText("Codex")).toBeInTheDocument();
 		expect(screen.getByText("ChatGPT OAuth")).toBeInTheDocument();
 		expect(screen.getByText("后台备用")).toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "统一接口（AIHubMix）" })).toBeInTheDocument();
-		expect(screen.getByText(/统一 API 默认使用 AIHubMix/)).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "统一接口（第三方）" })).toBeInTheDocument();
+		expect(screen.getByText(/统一 API 默认使用第三方接口/)).toBeInTheDocument();
 	});
 	it("keeps the capability matrix independent from credential rows", async () => {
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ aihubmixConfigured: true }));
@@ -112,26 +112,26 @@ describe("Settings API key page", () => {
 		expect(screen.getByText(/已真实接入的能力/)).toBeInTheDocument();
 		expect(screen.getByText("sk••••••456")).toBeInTheDocument();
 	});
-	it("loads AIHubMix Base URL in its independent configuration dialog", async () => {
+	it("loads 第三方 Base URL in its independent configuration dialog", async () => {
 		vi.mocked(getAIHubMixSettings).mockResolvedValue({
 			baseURL: "https://gateway.example.test/v1",
 		});
 
 		renderSettings();
 
-		fireEvent.click(await screen.findByRole("button", { name: "编辑 AIHubMix" }));
-		const dialog = await screen.findByRole("dialog", { name: "配置 AIHubMix" });
-		expect(within(dialog).getByLabelText("AIHubMix Base URL")).toHaveValue(
+		fireEvent.click(await screen.findByRole("button", { name: "编辑 第三方" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 第三方" });
+		expect(within(dialog).getByLabelText("第三方 Base URL")).toHaveValue(
 			"https://gateway.example.test/v1",
 		);
-		expect(within(dialog).getByLabelText("AIHubMix API Key")).toBeInTheDocument();
+		expect(within(dialog).getByLabelText("第三方 API Key")).toBeInTheDocument();
 	});
 	it("does not mark unconfigured third-party providers as configured", async () => {
 		renderSettings();
 
 		expect(await screen.findByText("Codex")).toBeInTheDocument();
 		expect(screen.queryByText("凭据已配置")).not.toBeInTheDocument();
-		expect(screen.getAllByText("AIHubMix").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("第三方").length).toBeGreaterThan(0);
 		expect(screen.getByText("DeepSeek")).toBeInTheDocument();
 	});
 	it("keeps the Provider framework visible when the model-platform allowlist is empty", async () => {
@@ -141,7 +141,7 @@ describe("Settings API key page", () => {
 
 		expect(await screen.findByRole("heading", { name: "模型提供方与能力" })).toBeInTheDocument();
 		expect(screen.getByText("Codex")).toBeInTheDocument();
-		expect(screen.getAllByText("AIHubMix").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("第三方").length).toBeGreaterThan(0);
 	});
 	it("keeps other providers collapsed by default even when one is configured", async () => {
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ openrouterConfigured: true }));
@@ -152,7 +152,7 @@ describe("Settings API key page", () => {
 		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
 	});
 
-	it("saves AIHubMix Base URL and API key together", async () => {
+	it("saves 第三方 Base URL and API key together", async () => {
 		vi.mocked(saveAIHubMixSettings).mockResolvedValue({
 			baseURL: "https://gateway.example.test/v1",
 		});
@@ -160,12 +160,12 @@ describe("Settings API key page", () => {
 
 		renderSettings();
 
-		fireEvent.click(await screen.findByRole("button", { name: "编辑 AIHubMix" }));
-		const dialog = await screen.findByRole("dialog", { name: "配置 AIHubMix" });
-		fireEvent.change(within(dialog).getByLabelText("AIHubMix Base URL"), {
+		fireEvent.click(await screen.findByRole("button", { name: "编辑 第三方" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 第三方" });
+		fireEvent.change(within(dialog).getByLabelText("第三方 Base URL"), {
 			target: { value: "https://gateway.example.test/v1" },
 		});
-		fireEvent.change(within(dialog).getByLabelText("AIHubMix API Key"), {
+		fireEvent.change(within(dialog).getByLabelText("第三方 API Key"), {
 			target: { value: "sk-aihubmix-123456" },
 		});
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
@@ -209,8 +209,8 @@ describe("Settings API key page", () => {
 	it("keeps AIHubMix unconfigured when only its endpoint is saved", async () => {
 		renderSettings();
 
-		fireEvent.click(await screen.findByRole("button", { name: "编辑 AIHubMix" }));
-		const dialog = await screen.findByRole("dialog", { name: "配置 AIHubMix" });
+		fireEvent.click(await screen.findByRole("button", { name: "编辑 第三方" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 第三方" });
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
 
 		await waitFor(() =>
@@ -224,7 +224,7 @@ describe("Settings API key page", () => {
 		vi.mocked(clearAPIKey).mockResolvedValue(apiKeysResponse({}));
 		renderSettings();
 
-		fireEvent.click(await screen.findByRole("button", { name: "AIHubMix 更多操作" }));
+		fireEvent.click(await screen.findByRole("button", { name: "第三方 更多操作" }));
 		fireEvent.click(await screen.findByRole("menuitem", { name: "清除 API Key" }));
 		expect(clearAPIKey).not.toHaveBeenCalled();
 		fireEvent.click(await screen.findByRole("button", { name: "清除 API Key" }));
@@ -523,7 +523,7 @@ const apiKeysResponse = ({
 	providers: [
 		{
 			id: "aihubmix",
-			label: "AIHubMix",
+			label: "第三方",
 			description: "OpenAI-compatible Agent gateway",
 			configured: aihubmixConfigured,
 			source: aihubmixConfigured ? "settings" : "none",

@@ -170,7 +170,7 @@ export const APIKeysPanel: React.FC<{
 	onOpenCodexAccess?: () => void;
 }> = ({
 	title = "API 密钥",
-	description = "Agent、图片、音频、视频按 Provider 能力独立接入；统一 API 默认使用 AIHubMix，本地与会员通道继续保留。",
+	description = "Agent、图片、音频、视频按 Provider 能力独立接入；统一 API 默认使用第三方接口，本地与会员通道继续保留。",
 	onOpenCodexAccess,
 }) => {
 	const toast = useToast();
@@ -438,9 +438,9 @@ export const APIKeysPanel: React.FC<{
 			}
 			revalidateModelDependentCaches();
 			setManualProviderID(undefined);
-			toast.success("AIHubMix 配置已保存", { description: nextSettings.baseURL });
+			toast.success("第三方配置已保存", { description: nextSettings.baseURL });
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "保存 AIHubMix 配置失败。";
+			const message = err instanceof Error ? err.message : "保存第三方配置失败。";
 			toast.error("保存失败", { description: message });
 		} finally {
 			setSavingID(undefined);
@@ -650,8 +650,8 @@ export const APIKeysPanel: React.FC<{
 				{aihubmixProvider ? (
 					<CredentialCategorySection
 						className="py-8"
-						title="统一接口（AIHubMix）"
-						description="默认模型网关。保存一个 AIHubMix API Key，用于当前已适配的文本生成与智能体模型；会员 CLI 通道继续使用。"
+						title="统一接口（第三方）"
+						description="默认模型网关。保存一个第三方 API Key，用于当前已适配的文本生成与智能体模型；会员 CLI 通道继续使用。"
 					>
 						{renderManualProvider(aihubmixProvider, "custom")}
 					</CredentialCategorySection>

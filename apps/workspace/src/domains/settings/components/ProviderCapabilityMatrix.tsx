@@ -52,7 +52,7 @@ const providerSpecs: ProviderSpec[] = [
 	},
 	{
 		id: "aihubmix",
-		label: "AIHubMix",
+		label: "第三方",
 		credential: "API Key",
 		capabilities: ["Agent", "文本", "自定义 Base URL"],
 	},
