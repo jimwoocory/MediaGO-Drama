@@ -125,6 +125,26 @@ func (workflow *GenerationService) SetDocumentResolver(documents GenerationDocum
 // ListGenerationModels returns the generation model catalog for HTTP handlers.
 func (workflow *GenerationService) ListGenerationModels() generationModelsResponse {
 	catalog := coregeneration.Catalog()
+	videoSettings, _ := workflow.settings.GetVideoAPISettings(context.Background())
+	videoModel := strings.TrimSpace(videoSettings.Model)
+	if videoModel != "" {
+		for index := range catalog.Routes {
+			if catalog.Routes[index].Provider == coregeneration.ProviderVideoAPI {
+				catalog.Routes[index].Model = videoModel
+			}
+		}
+		for index := range catalog.Versions {
+			if catalog.Versions[index].FamilyID == coregeneration.FamilyVideoAPI {
+				catalog.Versions[index].Label = videoModel
+				catalog.Versions[index].CanonicalModel = videoModel
+			}
+		}
+		for index := range catalog.Models {
+			if catalog.Models[index].Provider == coregeneration.ProviderVideoAPI {
+				catalog.Models[index].Model = videoModel
+			}
+		}
+	}
 	mediagoModels, hasMediagoCatalog := workflow.mediagoAvailableModelsForCatalog(context.Background())
 	for index := range catalog.Routes {
 		catalog.Routes[index].Configured = workflow.generationRouteConfiguredWithMediagoModels(

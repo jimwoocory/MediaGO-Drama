@@ -54,6 +54,12 @@ type SpeechAPISettingsRequest struct {
 	Voice   string `json:"voice"`
 }
 
+// VideoAPISettingsRequest updates the third-party asynchronous video endpoint.
+type VideoAPISettingsRequest struct {
+	BaseURL string `json:"baseURL"`
+	Model   string `json:"model"`
+}
+
 // CodexRelayAPIKeyRequest updates a Codex relay profile API key.
 type CodexRelayAPIKeyRequest struct {
 	APIKey string `json:"apiKey"`
@@ -141,6 +147,34 @@ func (handler Settings) HandlePutSpeechAPISettings(context *gin.Context) {
 	settings, err := handler.service.SetSpeechAPISettings(
 		context.Request.Context(),
 		service.SpeechAPISettings{BaseURL: payload.BaseURL, Model: payload.Model, Voice: payload.Voice},
+	)
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, settings)
+}
+
+// HandleVideoAPISettings returns the third-party video endpoint settings.
+func (handler Settings) HandleVideoAPISettings(context *gin.Context) {
+	settings, err := handler.service.GetVideoAPISettings(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, settings)
+}
+
+// HandlePutVideoAPISettings persists the third-party video endpoint settings.
+func (handler Settings) HandlePutVideoAPISettings(context *gin.Context) {
+	payload, err := decodeJSON[VideoAPISettingsRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	settings, err := handler.service.SetVideoAPISettings(
+		context.Request.Context(),
+		service.VideoAPISettings{BaseURL: payload.BaseURL, Model: payload.Model},
 	)
 	if err != nil {
 		writeSettingsError(context, err)

@@ -41,6 +41,14 @@ func CredentialSpecs() []CredentialSpec {
 			Help:            "可独立配置 Base URL、模型 ID 和默认音色，不影响 MiniMax 官方 TTS。",
 		},
 		{
+			ID:              ProviderVideoAPI,
+			Label:           "第三方 Video API",
+			Description:     "OpenAI-style asynchronous video generation route",
+			CredentialLabel: "Video API Key",
+			Placeholder:     "输入 Video API Key",
+			Help:            "配置后会作为独立 Provider 出现在生成视频工作台。",
+		},
+		{
 			ID:          ProviderOpenAI,
 			Label:       "OpenAI",
 			Description: "OpenAI official text and image routes",

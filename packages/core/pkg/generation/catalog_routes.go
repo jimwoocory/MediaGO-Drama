@@ -5,6 +5,7 @@ const (
 	RouteOfficialMiniMaxSpeech28HD         = "official.minimax-speech-2.8-hd"
 	RouteOfficialMiniMaxSpeech28Turbo      = "official.minimax-speech-2.8-turbo"
 	RouteSpeechAPICompatible               = "speechapi.compatible"
+	RouteVideoAPICompatible                = "videoapi.compatible"
 	RouteMediagoGPT41MiniText              = "mediago.gpt-4.1-mini-text"
 	RouteMediagoGPT5MiniText               = "mediago.gpt-5-mini-text"
 	RouteMediagoGPT55Text                  = "mediago.gpt-5.5-text"

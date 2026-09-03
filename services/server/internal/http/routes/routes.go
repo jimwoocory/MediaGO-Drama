@@ -151,6 +151,8 @@ func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.PUT("/settings/aihubmix", handlers.Settings.HandlePutAIHubMixSettings)
 	apiRoutes.GET("/settings/speech-api", handlers.Settings.HandleSpeechAPISettings)
 	apiRoutes.PUT("/settings/speech-api", handlers.Settings.HandlePutSpeechAPISettings)
+	apiRoutes.GET("/settings/video-api", handlers.Settings.HandleVideoAPISettings)
+	apiRoutes.PUT("/settings/video-api", handlers.Settings.HandlePutVideoAPISettings)
 	apiRoutes.GET("/settings/api-keys", handlers.Settings.HandleAPIKeys)
 	apiRoutes.PUT("/settings/api-keys/:provider", handlers.Settings.HandlePutAPIKey)
 	apiRoutes.DELETE("/settings/api-keys/:provider", handlers.Settings.HandleDeleteAPIKey)

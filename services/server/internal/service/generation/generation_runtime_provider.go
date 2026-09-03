@@ -25,6 +25,10 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 	if err != nil {
 		return nil, fmt.Errorf("reading Speech API settings: %w", err)
 	}
+	videoSettings, err := workflow.settings.GetVideoAPISettings(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("reading Video API settings: %w", err)
+	}
 
 	return runtime.NewProvider(runtime.Config{
 		Credentials:                   workflow.generationCredentialResolver(),
@@ -34,6 +38,8 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 		SpeechAPIBaseURL:              speechSettings.BaseURL,
 		SpeechAPIModel:                speechSettings.Model,
 		SpeechAPIVoice:                speechSettings.Voice,
+		VideoAPIBaseURL:               videoSettings.BaseURL,
+		VideoAPIModel:                 videoSettings.Model,
 		JimengBinPath:                 workflow.jimengBinPath,
 		JimengBinDir:                  workflow.jimengBinDir,
 		LibTVBinPath:                  workflow.libTVBinPath,
@@ -118,6 +124,12 @@ func (workflow *GenerationService) generationRouteConfiguredWithMediagoModels(
 	if route.Provider == coregeneration.ProviderSpeechAPI {
 		speechSettings, err := workflow.settings.GetSpeechAPISettings(context.Background())
 		if err != nil || strings.TrimSpace(speechSettings.BaseURL) == "" {
+			return false
+		}
+	}
+	if route.Provider == coregeneration.ProviderVideoAPI {
+		videoSettings, err := workflow.settings.GetVideoAPISettings(context.Background())
+		if err != nil || strings.TrimSpace(videoSettings.BaseURL) == "" || strings.TrimSpace(videoSettings.Model) == "" {
 			return false
 		}
 	}

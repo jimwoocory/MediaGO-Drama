@@ -294,6 +294,20 @@ var familySpecs = []familySpec{
 	},
 	{
 		Family: ModelFamily{
+			ID:          FamilyVideoAPI,
+			Label:       "第三方 Video API",
+			Kind:        KindVideo,
+			Description: "通过自定义 Base URL 和模型 ID 接入异步视频生成接口",
+		},
+		Versions: []ModelVersion{
+			version(VersionVideoAPICompatible, FamilyVideoAPI, "第三方 Video API", KindVideo, ModelVideoAPICompatible, true, false),
+		},
+		Routes: []ModelRoute{
+			officialRoute(RouteVideoAPICompatible, FamilyVideoAPI, VersionVideoAPICompatible, KindVideo, "第三方 Video API", ModelVideoAPICompatible, AdapterVideoAPICompatible, "https://platform.openai.com/docs/api-reference/videos", []string{ProviderVideoAPI}, RouteParamConfig{}, true, false),
+		},
+	},
+	{
+		Family: ModelFamily{
 			ID:          FamilySpeechAPI,
 			Label:       "第三方 Speech API",
 			Kind:        KindAudio,

@@ -178,6 +178,11 @@ export interface SpeechAPISettings {
 	voice: string;
 }
 
+export interface VideoAPISettings {
+	baseURL: string;
+	model: string;
+}
+
 export interface AgentModelProfileMutation {
 	templateId?: string;
 	name?: string;
@@ -199,6 +204,7 @@ export const apiKeysKey = "/settings/api-keys";
 export const modelPlatformsKey = "/settings/model-platforms";
 export const aihubmixSettingsKey = "/settings/aihubmix";
 export const speechAPISettingsKey = "/settings/speech-api";
+export const videoAPISettingsKey = "/settings/video-api";
 export const agentModelProfilesKey = "/settings/agent-model-profiles";
 export const codexRelaySettingsKey = "/settings/codex-relay";
 export const codexAccountKey = "/settings/codex-account";
@@ -231,6 +237,16 @@ export const getSpeechAPISettings = async () => {
 
 export const saveSpeechAPISettings = async (input: SpeechAPISettings) => {
 	const response = await httpClient.put<SpeechAPISettings>(speechAPISettingsKey, input);
+	return response.data;
+};
+
+export const getVideoAPISettings = async () => {
+	const response = await httpClient.get<VideoAPISettings>(videoAPISettingsKey);
+	return response.data;
+};
+
+export const saveVideoAPISettings = async (input: VideoAPISettings) => {
+	const response = await httpClient.put<VideoAPISettings>(videoAPISettingsKey, input);
 	return response.data;
 };
 

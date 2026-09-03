@@ -211,7 +211,7 @@ func normalizeOpenAICompatibleBaseURL(value string) (string, error) {
 func normalizeOpenAICompatibleBasePath(value string) string {
 	path := strings.TrimRight(strings.TrimSpace(value), "/")
 	lower := strings.ToLower(path)
-	for _, suffix := range []string{"/chat/completions", "/responses", "/models"} {
+	for _, suffix := range []string{"/chat/completions", "/responses", "/models", "/videos"} {
 		if strings.HasSuffix(lower, suffix) {
 			path = strings.TrimRight(path[:len(path)-len(suffix)], "/")
 			break

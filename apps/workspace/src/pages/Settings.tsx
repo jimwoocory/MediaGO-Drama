@@ -1,6 +1,7 @@
 import {
 	ArrowRight,
 	Check,
+	ChevronDown,
 	Clapperboard,
 	ExternalLink,
 	Ellipsis,
@@ -32,20 +33,22 @@ import {
 	getAIHubMixSettings,
 	getAPIKeys,
 	getSpeechAPISettings,
+	getVideoAPISettings,
 	getJianyingDraftSettings,
 	getModelPlatforms,
 	jianyingDraftSettingsKey,
 	modelPlatformsKey,
 	speechAPISettingsKey,
+	videoAPISettingsKey,
 	saveAIHubMixSettings,
 	saveAPIKey,
 	saveSpeechAPISettings,
+	saveVideoAPISettings,
 	saveJianyingDraftSettings,
 } from "@/domains/settings/api/settings";
 import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
 import { generationModelsKey } from "@/domains/generation/api/generation";
 import { CodexAccessPanel } from "@/domains/settings/components/CodexAccessPanel";
-import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
 import { CodexSkillsPanel } from "@/domains/settings/components/CodexSkillsPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
@@ -75,7 +78,11 @@ import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
 import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
-import { providerRowElementID } from "@/domains/settings/components/ProviderCapabilityMatrix";
+import {
+	ProviderCapabilityMatrix,
+	providerRowElementID,
+	type ProviderCapabilityTarget,
+} from "@/domains/settings/components/ProviderCapabilityMatrix";
 
 const jianyingDraftSettingsEnabled: boolean = false;
 const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== "false";
@@ -173,11 +180,16 @@ const APIKeysPanel: React.FC = () => {
 		speechAPISettingsKey,
 		getSpeechAPISettings,
 	);
+	const { data: videoAPISettings, mutate: mutateVideoAPISettings } = useSWR(
+		videoAPISettingsKey,
+		getVideoAPISettings,
+	);
 	const providers = data?.providers ?? [];
 	const modelPlatforms = modelPlatformsData?.platforms ?? [];
 	const providersByID = new Map(providers.map((provider) => [provider.id, provider]));
 	const aihubmixProvider = providersByID.get("aihubmix");
 	const speechAPIProvider = providersByID.get("speechapi");
+	const videoAPIProvider = providersByID.get("videoapi");
 	const cliProviders =
 		modelPlatforms.length > 0
 			? platformProviders(modelPlatforms, providersByID, "cli")
@@ -188,8 +200,9 @@ const APIKeysPanel: React.FC = () => {
 			)
 		: [];
 	const officialProviders = officialAPIKeyProviders(providers, modelPlatforms).filter(
-		(provider) => provider.id !== "speechapi" && provider.id !== "aihubmix",
+		(provider) => provider.id !== "speechapi" && provider.id !== "videoapi",
 	);
+	const [otherProvidersExpanded, setOtherProvidersExpanded] = useState(false);
 	const [apiKeys, setAPIKeys] = useState<Record<string, string>>({});
 	const [savingID, setSavingID] = useState<string>();
 	const [clearingID, setClearingID] = useState<string>();
@@ -200,6 +213,8 @@ const APIKeysPanel: React.FC = () => {
 	const [speechAPIBaseURL, setSpeechAPIBaseURL] = useState("");
 	const [speechAPIModel, setSpeechAPIModel] = useState("gpt-4o-mini-tts");
 	const [speechAPIVoice, setSpeechAPIVoice] = useState("alloy");
+	const [videoAPIBaseURL, setVideoAPIBaseURL] = useState("");
+	const [videoAPIModel, setVideoAPIModel] = useState("");
 	const [loginChallenges, setLoginChallenges] = useState<Record<string, APIKeyLoginChallenge>>({});
 	const hasPendingBrowserLogin = Object.values(loginChallenges).some(
 		(challenge) => challenge.status === "pending" && Boolean(challenge.verificationUri),
@@ -219,6 +234,12 @@ const APIKeysPanel: React.FC = () => {
 		setSpeechAPIModel(speechAPISettings.model || "gpt-4o-mini-tts");
 		setSpeechAPIVoice(speechAPISettings.voice || "alloy");
 	}, [speechAPISettings]);
+
+	useEffect(() => {
+		if (!videoAPISettings) return;
+		setVideoAPIBaseURL(videoAPISettings.baseURL ?? "");
+		setVideoAPIModel(videoAPISettings.model ?? "");
+	}, [videoAPISettings]);
 
 	useEffect(() => {
 		if (!hasPendingBrowserLogin) return;
@@ -447,6 +468,34 @@ const APIKeysPanel: React.FC = () => {
 		}
 	};
 
+	const saveVideoAPIConfig = async (provider: APIKeyProvider) => {
+		if (savingID) return;
+		const baseURL = videoAPIBaseURL.trim();
+		const model = videoAPIModel.trim();
+		const apiKey = apiKeys[provider.id]?.trim() ?? "";
+		if (!baseURL || !model || (!apiKey && !provider.configured)) return;
+		setSavingID(provider.id);
+		try {
+			if (apiKey) {
+				const nextData = await saveAPIKey(provider.id, apiKey);
+				await mutate(nextData, false);
+				setAPIKeys((current) => ({ ...current, [provider.id]: "" }));
+			}
+			const nextSettings = await saveVideoAPISettings({ baseURL, model });
+			await mutateVideoAPISettings(nextSettings, false);
+			revalidateModelDependentCaches();
+			setManualProviderID(undefined);
+			toast.success("第三方 Video API 配置已保存", {
+				description: `${nextSettings.model} · 已接入生成视频工作台`,
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "保存第三方 Video API 配置失败。";
+			toast.error("保存失败", { description: message });
+		} finally {
+			setSavingID(undefined);
+		}
+	};
+
 	const renderProvider = (provider: APIKeyProvider, hint?: string) => {
 		const apiKey = apiKeys[provider.id] ?? "";
 		const isSaving = savingID === provider.id;
@@ -487,21 +536,38 @@ const APIKeysPanel: React.FC = () => {
 		const apiKey = apiKeys[provider.id] ?? "";
 		const isAIHubMix = provider.id === "aihubmix";
 		const isSpeechAPI = provider.id === "speechapi";
+		const isVideoAPI = provider.id === "videoapi";
 		return (
 			<div id={providerRowElementID(provider.id)} key={provider.id}>
 				<ManualAPIKeyProviderRow
 					apiKey={apiKey}
-					baseURL={isAIHubMix ? aihubmixBaseURL : isSpeechAPI ? speechAPIBaseURL : undefined}
-					baseURLPlaceholder={isSpeechAPI ? "https://example.com/v1" : undefined}
-					model={isSpeechAPI ? speechAPIModel : undefined}
+					baseURL={
+						isAIHubMix
+							? aihubmixBaseURL
+							: isSpeechAPI
+								? speechAPIBaseURL
+								: isVideoAPI
+									? videoAPIBaseURL
+									: undefined
+					}
+					baseURLPlaceholder={isSpeechAPI || isVideoAPI ? "https://example.com/v1" : undefined}
+					model={isSpeechAPI ? speechAPIModel : isVideoAPI ? videoAPIModel : undefined}
 					voice={isSpeechAPI ? speechAPIVoice : undefined}
 					isClearing={clearingID === provider.id}
 					isSaving={savingID === provider.id}
 					onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
 					onBaseURLChange={
-						isAIHubMix ? setAIHubMixBaseURL : isSpeechAPI ? setSpeechAPIBaseURL : undefined
+						isAIHubMix
+							? setAIHubMixBaseURL
+							: isSpeechAPI
+								? setSpeechAPIBaseURL
+								: isVideoAPI
+									? setVideoAPIBaseURL
+									: undefined
 					}
-					onModelChange={isSpeechAPI ? setSpeechAPIModel : undefined}
+					onModelChange={
+						isSpeechAPI ? setSpeechAPIModel : isVideoAPI ? setVideoAPIModel : undefined
+					}
 					onVoiceChange={isSpeechAPI ? setSpeechAPIVoice : undefined}
 					onClear={() => confirmClear(provider)}
 					onOpenChange={(open) => setManualProviderID(open ? provider.id : undefined)}
@@ -510,7 +576,9 @@ const APIKeysPanel: React.FC = () => {
 							? saveAIHubMixConfig(provider)
 							: isSpeechAPI
 								? saveSpeechAPIConfig(provider)
-								: saveManualConfig(provider))
+								: isVideoAPI
+									? saveVideoAPIConfig(provider)
+									: saveManualConfig(provider))
 					}
 					open={manualProviderID === provider.id}
 					provider={provider}
@@ -519,6 +587,26 @@ const APIKeysPanel: React.FC = () => {
 				/>
 			</div>
 		);
+	};
+
+	const otherProviderIDs = new Set([
+		...customProviders.map((provider) => provider.id),
+		...officialProviders.map((provider) => provider.id),
+	]);
+	const selectProviderFromMatrix = (providerID: string, target: ProviderCapabilityTarget) => {
+		if (target === "codex-access") {
+			useSettingsNavigationStore.getState().setActiveTab("codex-access");
+			return;
+		}
+		if (otherProviderIDs.has(providerID)) {
+			setOtherProvidersExpanded(true);
+		}
+		window.requestAnimationFrame(() => {
+			document.getElementById(providerRowElementID(providerID))?.scrollIntoView({
+				behavior: "smooth",
+				block: "center",
+			});
+		});
 	};
 
 	const renderCustomProvider = (provider: APIKeyProvider) =>
@@ -533,14 +621,13 @@ const APIKeysPanel: React.FC = () => {
 	return (
 		<SettingsPanelLayout
 			title="API 密钥"
-			description="配置 Agent、文本、图片、音频、视频使用的官方与第三方 API；不预置任何凭据，按需要独立接入。"
+			description="Agent、图片、音频、视频按 Provider 能力独立接入；统一 API 默认使用 AIHubMix，本地与会员通道继续保留。"
 			icon={<KeyRound className="size-4" />}
 		>
 			<div className="mx-auto w-full max-w-5xl divide-y divide-border">
-				<CodexRelayPanel
-					embedded
-					title="第三方 Agent API"
-					description="用于 Tokease、AIHubMix、自建网关等 OpenAI-compatible Agent 接口。支持 Auto / Responses / Chat Completions、Model ID 与能力检测。"
+				<ProviderCapabilityMatrix
+					onSelectProvider={selectProviderFromMatrix}
+					providers={providers}
 				/>
 				{(isLoading || isModelPlatformsLoading) && providers.length === 0 ? (
 					<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
@@ -566,6 +653,15 @@ const APIKeysPanel: React.FC = () => {
 						{renderManualProvider(speechAPIProvider, "custom")}
 					</CredentialCategorySection>
 				) : null}
+				{videoAPIProvider ? (
+					<CredentialCategorySection
+						className="py-8"
+						title="视频接口（第三方 Video API）"
+						description="配置 Base URL、Model ID 和 API Key；保存后该 Provider 会直接出现在生成视频工作台。"
+					>
+						{renderManualProvider(videoAPIProvider, "custom")}
+					</CredentialCategorySection>
+				) : null}
 				{cliProviders.length > 0 ? (
 					<CredentialCategorySection
 						className="py-8"
@@ -575,23 +671,46 @@ const APIKeysPanel: React.FC = () => {
 						{cliProviders.map(renderCLIProvider)}
 					</CredentialCategorySection>
 				) : null}
-				{customProviders.length > 0 ? (
-					<CredentialCategorySection
-						className="py-8"
-						title="自定义接口"
-						description="配置 AIHubMix、Tokease、自建网关或其他 OpenAI-compatible 第三方接口。第三方接口的 Base URL、API Key、协议和模型能力独立管理。"
-					>
-						{customProviders.map(renderCustomProvider)}
-					</CredentialCategorySection>
-				) : null}
-				{officialProviders.length > 0 ? (
-					<CredentialCategorySection
-						className="py-8"
-						title={modelPlatforms.length > 0 ? "官方供应商" : "供应商"}
-						description="直接配置 OpenAI、DeepSeek、Gemini、MiniMax 等官方供应商凭据。"
-					>
-						{officialProviders.map(renderOfficialProvider)}
-					</CredentialCategorySection>
+				{customProviders.length > 0 || officialProviders.length > 0 ? (
+					<section className="pt-8">
+						<button
+							type="button"
+							aria-expanded={otherProvidersExpanded}
+							onClick={() => setOtherProvidersExpanded(!otherProvidersExpanded)}
+							className="flex w-full items-center justify-between gap-3 text-left"
+						>
+							<div className="min-w-0">
+								<h3 className="text-sm font-semibold text-foreground">其他接入方式</h3>
+								<p className="mt-1 text-xs leading-5 text-muted-foreground">
+									自定义接口与官方供应商凭据，适合已有对应平台账号或额度的场景。
+								</p>
+							</div>
+							<ChevronDown
+								className={cn(
+									"size-4 shrink-0 text-muted-foreground transition-transform",
+									otherProvidersExpanded && "rotate-180",
+								)}
+							/>
+						</button>
+						{otherProvidersExpanded ? (
+							<div className="space-y-6 pt-4">
+								{customProviders.length > 0 ? (
+									<section className="space-y-2.5">
+										<h4 className="text-xs font-medium text-muted-foreground">自定义接口</h4>
+										{customProviders.map(renderCustomProvider)}
+									</section>
+								) : null}
+								{officialProviders.length > 0 ? (
+									<section className="space-y-2.5">
+										<h4 className="text-xs font-medium text-muted-foreground">
+											{modelPlatforms.length > 0 ? "官方供应商" : "供应商"}
+										</h4>
+										{officialProviders.map(renderOfficialProvider)}
+									</section>
+								) : null}
+							</div>
+						) : null}
+					</section>
 				) : null}
 			</div>
 		</SettingsPanelLayout>
@@ -658,9 +777,7 @@ const officialAPIKeyProviders = (providers: APIKeyProvider[], platforms: ModelPl
 	const platformProviderIDs = new Set(platforms.map((platform) => platform.apiKeyProviderId));
 	return providers.filter(
 		(provider) =>
-			!knownPlatformProviderIDs.has(provider.id) &&
-			!platformProviderIDs.has(provider.id) &&
-			!fallbackCLIProviderIDs.has(provider.id),
+			!knownPlatformProviderIDs.has(provider.id) && !platformProviderIDs.has(provider.id),
 	);
 };
 
@@ -1129,15 +1246,17 @@ const ManualProviderConfigDialog: React.FC<{
 							配置 {provider.label}
 						</h3>
 						<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-							{model !== undefined || voice !== undefined
-								? "配置 OpenAI-compatible Base URL、模型 ID、默认音色和 API Key。"
-								: baseURL !== undefined
-									? "配置 OpenAI-compatible Base URL 和 API Key；保存后 MediaGo Agent Core 会自动读取可用模型。"
-									: variant === "custom"
-										? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
-										: variant === "cli"
-											? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
-											: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
+							{provider.id === "videoapi"
+								? "配置视频生成 Base URL、模型 ID 和 API Key；保存后会出现在生成视频工作台。"
+								: model !== undefined || voice !== undefined
+									? "配置 OpenAI-compatible Base URL、模型 ID、默认音色和 API Key。"
+									: baseURL !== undefined
+										? "配置 OpenAI-compatible Base URL 和 API Key；保存后 MediaGo Agent Core 会自动读取可用模型。"
+										: variant === "custom"
+											? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
+											: variant === "cli"
+												? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
+												: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
 						</p>
 					</div>
 					<span className="rounded-full bg-ide-list-hover px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -1171,9 +1290,10 @@ const ManualProviderConfigDialog: React.FC<{
 							</Label>
 							<Input
 								id={`${inputID}-model`}
+								aria-label={`${provider.label} 模型 ID`}
 								value={model}
 								onChange={(event) => onModelChange(event.target.value)}
-								placeholder="gpt-4o-mini-tts"
+								placeholder={provider.id === "videoapi" ? "例如 seedance2.5" : "gpt-4o-mini-tts"}
 								className="h-10 rounded-md font-mono text-sm text-foreground"
 							/>
 						</div>

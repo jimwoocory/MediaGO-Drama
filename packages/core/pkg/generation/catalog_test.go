@@ -49,6 +49,7 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 		ProviderMediago,
 		ProviderDMX,
 		ProviderOpenRouter,
+		ProviderVideoAPI,
 		ProviderJimeng,
 		ProviderLibTV,
 		ProviderXiaoyunque,
@@ -855,6 +856,7 @@ func TestVideoCatalogOnlyExposesKnownFamilies(t *testing.T) {
 	videoFamilies := map[string]bool{
 		FamilySeedance:   true,
 		FamilyHappyHorse: true,
+		FamilyVideoAPI:   true,
 	}
 	for _, family := range Families() {
 		if family.Kind == KindVideo && !videoFamilies[family.ID] {

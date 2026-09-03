@@ -18,6 +18,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/pippit"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/speechapi"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/videoapi"
 )
 
 // CredentialResolver loads credentials by catalog credential key.
@@ -52,6 +53,8 @@ type Config struct {
 	SpeechAPIBaseURL  string
 	SpeechAPIModel    string
 	SpeechAPIVoice    string
+	VideoAPIBaseURL   string
+	VideoAPIModel     string
 
 	OpenAIBaseURL     string
 	GoogleBaseURL     string
@@ -199,6 +202,8 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 			return provider.openRouterProvider(ctx)
 		case generation.ProviderSpeechAPI:
 			return provider.speechAPIProvider(ctx)
+		case generation.ProviderVideoAPI:
+			return provider.videoAPIProvider(ctx)
 		default:
 			return nil, fmt.Errorf("generation provider %q is not implemented", route.Provider)
 		}
@@ -343,6 +348,30 @@ func (provider *Provider) openRouterProvider(ctx context.Context) (generation.Pr
 			APIKey:     apiKey,
 			AppURL:     provider.config.OpenRouterAppURL,
 			AppTitle:   provider.config.OpenRouterAppName,
+			HTTPClient: provider.config.HTTPClient,
+		})
+	})
+}
+
+func (provider *Provider) videoAPIProvider(ctx context.Context) (generation.Provider, error) {
+	apiKey, err := provider.credential(ctx, generation.ProviderVideoAPI)
+	if err != nil {
+		return nil, err
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(provider.config.VideoAPIBaseURL), "/")
+	if baseURL == "" {
+		return nil, fmt.Errorf("video API base URL is not configured")
+	}
+	model := strings.TrimSpace(provider.config.VideoAPIModel)
+	if model == "" {
+		return nil, fmt.Errorf("video API model is not configured")
+	}
+	cacheKey := provider.cacheKey(generation.ProviderVideoAPI, apiKey, baseURL, model)
+	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
+		return videoapi.NewProvider(videoapi.Config{
+			BaseURL:    baseURL,
+			APIKey:     apiKey,
+			Model:      model,
 			HTTPClient: provider.config.HTTPClient,
 		})
 	})
