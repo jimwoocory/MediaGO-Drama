@@ -122,7 +122,7 @@ describe("SettingsSidebarPanel", () => {
 				.getAllByRole("button")
 				.map((button) => button.textContent)
 				.slice(0, 3),
-		).toEqual(["API 密钥", "Codex 技能", "智能体指令"]);
+		).toEqual(["API 密钥", "Codex 接入", "Codex 技能"]);
 	});
 
 	it("shows the app updates settings entry", () => {
@@ -160,7 +160,7 @@ describe("SettingsSidebarPanel", () => {
 		).toEqual(["基础设置", "快捷键", "用量与账单", "应用更新"]);
 	});
 
-	it("hides the Codex access settings entry for non-Codex agents", () => {
+	it("keeps the Codex access settings entry visible when Codex is not active", () => {
 		render(
 			<SettingsSidebarPanel
 				activeAgentBackendId="opencode"
@@ -171,7 +171,7 @@ describe("SettingsSidebarPanel", () => {
 			/>,
 		);
 
-		expect(screen.queryByRole("button", { name: "Codex 接入" })).toBeNull();
+		expect(screen.getByRole("button", { name: "Codex 接入" })).toBeInTheDocument();
 	});
 
 	it("hides the Jianying draft settings entry while it is disabled", () => {

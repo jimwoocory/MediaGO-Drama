@@ -620,14 +620,12 @@ const debugNavItem = (value: DebugTabValue): SettingsNavItem => {
 	return { value: tab.value, label: tab.label, icon: tab.icon };
 };
 
-const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] => {
+const settingsNavGroups = (_activeAgentBackendId = "codex"): SettingsNavGroup[] => {
 	const generationItems: SettingsNavItem[] = [
 		{ value: "api-keys", label: "API 密钥", icon: KeyRound },
+		{ value: "codex-access", label: "Codex 接入", icon: Network },
+		{ value: "codex-skills", label: "Codex 技能", icon: Blocks },
 	];
-	if (activeAgentBackendId === "codex") {
-		generationItems.push({ value: "codex-access", label: "Codex 接入", icon: Network });
-	}
-	generationItems.push({ value: "codex-skills", label: "Codex 技能", icon: Blocks });
 	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));
 	return [
 		{
