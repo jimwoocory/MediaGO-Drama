@@ -104,8 +104,7 @@ func TestLoadDefaults(t *testing.T) {
 		config.Agent.MaxSessionTurns != 4 ||
 		config.Prompt.MaxSectionChars != 12000 ||
 		config.Prompt.InstructionDelivery != "native" ||
-		len(config.GenerationCLIs) != 1 ||
-		config.GenerationCLIs[0] != "dreamina" {
+		len(config.GenerationCLIs) != 0 {
 		t.Fatalf("config = %#v, want default host and port", config)
 	}
 }

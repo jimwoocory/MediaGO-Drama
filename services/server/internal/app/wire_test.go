@@ -39,7 +39,7 @@ func TestAgentBackendIDForRuntimeModel(t *testing.T) {
 		model string
 		want  string
 	}{
-		{model: "", want: "codex"},
+		{model: "", want: ""},
 		{model: "gpt-5.6", want: "codex"},
 		{model: "aihubmix/gpt-5.5", want: "opencode"},
 		{model: "deepseek/deepseek-chat", want: "opencode"},

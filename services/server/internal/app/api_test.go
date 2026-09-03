@@ -206,7 +206,7 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("list status code = %d, want %d: %s", list.StatusCode, http.StatusOK, readBody(t, list.Body))
 		}
 		listBody := readBody(t, list.Body)
-		if !strings.Contains(listBody, `"activeId":"codex"`) ||
+		if !strings.Contains(listBody, `"activeId":""`) ||
 			!strings.Contains(listBody, `"id":"opencode"`) ||
 			!strings.Contains(listBody, `"command":"opencode acp"`) ||
 			strings.Contains(listBody, `"id":"claude-code"`) {

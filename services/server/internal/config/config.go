@@ -101,7 +101,7 @@ func defaults() ServerConfig {
 	return ServerConfig{
 		Host:           "127.0.0.1",
 		Port:           8080,
-		GenerationCLIs: []string{"dreamina"},
+		GenerationCLIs: []string{},
 		Agent: AgentConfig{
 			MaxSessionTurns: 4,
 		},

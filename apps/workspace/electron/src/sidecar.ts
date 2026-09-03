@@ -1,12 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:net";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
 	agentsDir,
 	isPackaged,
-	legacyUserWorkspaceDir,
 	portableWorkspaceDir,
 	resourceRoot,
 	serverBinaryPath,
@@ -33,12 +32,6 @@ export const preparePackagedWorkspace = () => {
 	if (!isPackaged()) return;
 	const target = portableWorkspaceDir();
 	if (directoryHasEntries(target)) return;
-	const legacy = legacyUserWorkspaceDir();
-	mkdirSync(dirname(target), { recursive: true });
-	if (directoryHasEntries(legacy)) {
-		cpSync(legacy, target, { recursive: true, force: false, errorOnExist: true });
-		return;
-	}
 	mkdirSync(target, { recursive: true });
 };
 
@@ -114,7 +107,7 @@ const packagedLocalCLIConfig = () => {
 			: [];
 		return { generationClis: values.map((value) => value.trim()).filter(Boolean) };
 	} catch {
-		return { generationClis: ["dreamina"] };
+		return { generationClis: [] };
 	}
 };
 
@@ -139,10 +132,10 @@ const sidecarEnvironment = (
 
 	return {
 		...inherited,
-		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || "codex"),
+		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || ""),
 		MEDIAGO_MODEL_PLATFORM: configuredValue(
 			"MEDIAGO_MODEL_PLATFORM",
-			platformConfig.modelPlatform || "mediago",
+			platformConfig.modelPlatform || "",
 		),
 		MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: configuredValue(
 			"MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL",
@@ -153,7 +146,12 @@ const sidecarEnvironment = (
 			localGenerationCLIsEnvValue(localCLIConfig.generationClis),
 		),
 		MEDIAGO_SERVER_PORT: serverPort,
-		...(packaged ? { MEDIAGO_WORKSPACE_DIR: portableWorkspaceDir() } : {}),
+		...(packaged
+			? {
+					MEDIAGO_WORKSPACE_DIR: portableWorkspaceDir(),
+					CODEX_HOME: join(portableWorkspaceDir(), ".codex"),
+				}
+			: {}),
 		MEDIAGO_EXIT_ON_STDIN_CLOSE: "1",
 		MEDIAGO_SIDECAR_MODE: "1",
 		MEDIAGO_SIDECAR_TOKEN: token,
@@ -224,6 +222,8 @@ const sanitizedPackagedEnvironment = (environment: NodeJS.ProcessEnv): NodeJS.Pr
 				!normalized.startsWith("MEDIAGO_") &&
 				!normalized.startsWith("ONE_INTERNAL_") &&
 				!normalized.startsWith("DYLD_") &&
+				!normalized.endsWith("_API_KEY") &&
+				!normalized.endsWith("_AUTH_TOKEN") &&
 				!blockedPackagedEnvironmentNames.has(normalized)
 			);
 		}),

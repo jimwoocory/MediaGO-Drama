@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-func TestAgentBackendServiceDefaultsToCodex(t *testing.T) {
+func TestAgentBackendServiceStartsUnconfigured(t *testing.T) {
 	store := NewAgentBackendService("")
 
 	payload := store.ListBackends()
-	if payload.ActiveID != "codex" {
-		t.Fatalf("ActiveID = %q, want codex", payload.ActiveID)
+	if payload.ActiveID != "" {
+		t.Fatalf("ActiveID = %q, want empty", payload.ActiveID)
 	}
 	if len(payload.Backends) != 2 {
 		t.Fatalf("len(Backends) = %d, want 2", len(payload.Backends))
@@ -20,10 +20,12 @@ func TestAgentBackendServiceDefaultsToCodex(t *testing.T) {
 	if payload.Backends[0].Name != "Codex Harness" || payload.Backends[1].Name != "MediaGo Agent Core" {
 		t.Fatalf("builtin backend names = %q, %q", payload.Backends[0].Name, payload.Backends[1].Name)
 	}
-	if command := store.ActiveCommand(); command != "codex-acp" {
-		t.Fatalf("ActiveCommand() = %q, want codex-acp", command)
+	if command := store.ActiveCommand(); command != "" {
+		t.Fatalf("ActiveCommand() = %q, want empty", command)
 	}
-	assertArgv(t, store.ActiveArgv(), []string{"codex-acp"})
+	if argv := store.ActiveArgv(); len(argv) != 0 {
+		t.Fatalf("ActiveArgv() = %#v, want empty", argv)
+	}
 }
 
 func TestAgentBackendServiceMatchesInitialBuiltinCommand(t *testing.T) {

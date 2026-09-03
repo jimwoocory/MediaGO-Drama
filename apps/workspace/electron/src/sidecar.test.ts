@@ -95,6 +95,9 @@ describe("server sidecar lifecycle", () => {
 		vi.stubEnv("HTTPS_PROXY", "http://127.0.0.1:8888");
 		vi.stubEnv("SSL_CERT_FILE", "/tmp/attacker-ca.pem");
 		vi.stubEnv("SSLKEYLOGFILE", "/tmp/tls.keys");
+		vi.stubEnv("OPENAI_API_KEY", "host-openai-key");
+		vi.stubEnv("DEEPSEEK_API_KEY", "host-deepseek-key");
+		vi.stubEnv("CODEX_HOME", "/host/codex-home");
 		const processChild = new FakeChildProcess();
 		mocks.spawn.mockReturnValue(processChild);
 		const sidecar = await import("./sidecar.js");
@@ -103,9 +106,13 @@ describe("server sidecar lifecycle", () => {
 
 		const spawnOptions = mocks.spawn.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
 		expect(spawnOptions.env).toMatchObject({
+			MEDIAGO_AGENT_ID: "",
+			MEDIAGO_MODEL_PLATFORM: "",
 			MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "",
+			MEDIAGO_GENERATION_CLIS: "none",
 			MEDIAGO_SIDECAR_MODE: "1",
 			MEDIAGO_WORKSPACE_DIR: join(dirname(process.execPath), "data", "workspace"),
+			CODEX_HOME: join(dirname(process.execPath), "data", "workspace", ".codex"),
 		});
 		const dynamicPort = spawnOptions.env?.MEDIAGO_SERVER_PORT;
 		expect(dynamicPort).toMatch(/^\d+$/);
@@ -122,6 +129,9 @@ describe("server sidecar lifecycle", () => {
 		expect(spawnOptions.env).not.toHaveProperty("HTTPS_PROXY");
 		expect(spawnOptions.env).not.toHaveProperty("SSL_CERT_FILE");
 		expect(spawnOptions.env).not.toHaveProperty("SSLKEYLOGFILE");
+		expect(spawnOptions.env).not.toHaveProperty("OPENAI_API_KEY");
+		expect(spawnOptions.env).not.toHaveProperty("DEEPSEEK_API_KEY");
+		expect(spawnOptions.env?.CODEX_HOME).not.toBe("/host/codex-home");
 	});
 
 	it("leaves the builtin sidecar to the development server only in development", async () => {

@@ -435,7 +435,11 @@ func deepSeekHarnessAdapterProvider(provider string) bool {
 }
 
 func agentBackendIDForRuntimeModel(modelValue string) string {
-	provider, _, hasProvider := strings.Cut(strings.TrimSpace(modelValue), "/")
+	modelValue = strings.TrimSpace(modelValue)
+	if modelValue == "" {
+		return ""
+	}
+	provider, _, hasProvider := strings.Cut(modelValue, "/")
 	if !hasProvider {
 		return "codex"
 	}

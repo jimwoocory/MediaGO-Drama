@@ -56,7 +56,7 @@ func NewAgentBackendService(initialCommand string) *AgentBackendService {
 // NewAgentBackendServiceWithBinDir creates a backend service with optional vendored binaries.
 func NewAgentBackendServiceWithBinDir(initialCommand string, binDir string, activeBackendID string) *AgentBackendService {
 	backends := builtinAgentBackends()
-	activeID := defaultAgentBackendID
+	activeID := ""
 	command := normalizeAgentBackendCommand(initialCommand)
 	if command != "" {
 		for _, backend := range backends {
@@ -84,7 +84,7 @@ func (store *AgentBackendService) ListBackends() AgentBackendsPayload {
 	if store == nil {
 		return AgentBackendsPayload{
 			Backends: builtinAgentBackends(),
-			ActiveID: defaultAgentBackendID,
+			ActiveID: "",
 		}
 	}
 
@@ -94,9 +94,6 @@ func (store *AgentBackendService) ListBackends() AgentBackendsPayload {
 	backends := make([]AgentBackend, len(store.backends))
 	copy(backends, store.backends)
 	activeID := store.activeID
-	if activeID == "" {
-		activeID = defaultAgentBackendID
-	}
 	return AgentBackendsPayload{
 		Backends: backends,
 		ActiveID: activeID,
@@ -106,7 +103,7 @@ func (store *AgentBackendService) ListBackends() AgentBackendsPayload {
 // ActiveCommand returns the command for the active backend.
 func (store *AgentBackendService) ActiveCommand() string {
 	if store == nil {
-		return defaultAgentBackendCommand
+		return ""
 	}
 
 	store.mu.RLock()
@@ -118,7 +115,7 @@ func (store *AgentBackendService) ActiveCommand() string {
 // ActiveArgv returns the executable argv for the active backend.
 func (store *AgentBackendService) ActiveArgv() []string {
 	if store == nil {
-		return splitAgentBackendCommand(defaultAgentBackendCommand)
+		return nil
 	}
 
 	store.mu.RLock()
@@ -131,7 +128,7 @@ func (store *AgentBackendService) ActiveArgv() []string {
 func (store *AgentBackendService) ArgvForBackend(id string) []string {
 	id = strings.TrimSpace(id)
 	if store == nil {
-		if id == "" || id == defaultAgentBackendID {
+		if id == defaultAgentBackendID {
 			return splitAgentBackendCommand(defaultAgentBackendCommand)
 		}
 		return nil
@@ -233,7 +230,7 @@ func (store *AgentBackendService) activeCommandLocked() string {
 			break
 		}
 	}
-	return defaultAgentBackendCommand
+	return ""
 }
 
 func builtinAgentBackends() []AgentBackend {
@@ -350,7 +347,7 @@ func normalizeAgentBackendCommand(command string) string {
 func splitAgentBackendCommand(command string) []string {
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
-		return []string{defaultAgentBackendCommand}
+		return nil
 	}
 	return parts
 }

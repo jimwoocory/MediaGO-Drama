@@ -11,13 +11,13 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const agent = process.argv[2]?.trim() || "codex";
+const agent = process.argv[2]?.trim() || "";
 const platformArg = process.argv[3]?.trim() || "";
-const modelPlatform = process.argv[4]?.trim() || "mediago";
+const modelPlatform = process.argv[4]?.trim() || "";
 const mediagoBaseURL =
 	process.argv[5]?.trim() || process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL?.trim() || "";
 const generationClis =
-	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina,libtv,pippit";
+	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "none";
 const includeProtectedPackRuntime =
 	process.env.MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME?.trim() === "1";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -37,14 +37,15 @@ const serviceBinaries = serviceBinaryNames.map((name) => ({
 	name: `${name}${targetPlatform.binaryExt}`,
 	path: join(serverBinDir, `${name}${targetPlatform.binaryExt}`),
 }));
-const agentIDs = unique(["codex", "opencode", agent]);
+const agentIDs = unique(["codex", "opencode", agent].filter(Boolean));
 const toolsDist = join(vendorDistRoot, "tools");
 const electronResourcesDir = join(workspaceDir, "electron", "resources");
 const baseToolIDs = ["ffmpeg", "ffprobe"];
 const generationCliIDs = parseToolIDs(generationClis);
+const bundledGenerationCliIDs = ["dreamina", "libtv", "pippit"];
 const selectedToolIDs = unique([
 	...baseToolIDs,
-	...generationCliIDs,
+	...bundledGenerationCliIDs,
 	...(includeProtectedPackRuntime ? ["mediago-rights"] : []),
 ]);
 

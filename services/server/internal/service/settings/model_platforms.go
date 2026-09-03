@@ -56,7 +56,7 @@ type modelPlatformSpec struct {
 }
 
 func defaultModelPlatformIDs() []string {
-	return []string{ModelPlatformMediago}
+	return []string{}
 }
 
 func modelPlatformSpecs() []modelPlatformSpec {
@@ -319,7 +319,7 @@ func (service *Settings) ListModelPlatforms(ctx context.Context) ModelPlatformLi
 }
 
 func defaultGenerationCLIProviderIDs() []string {
-	return []string{generation.ProviderJimeng}
+	return []string{}
 }
 
 func enabledGenerationCLIProviderSet(ids []string) map[string]bool {
