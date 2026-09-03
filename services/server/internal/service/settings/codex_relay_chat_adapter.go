@@ -53,7 +53,6 @@ type codexChatToolFunction struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Parameters  any    `json:"parameters,omitempty"`
-	Strict      *bool  `json:"strict,omitempty"`
 }
 
 type codexChatToolCall struct {
@@ -247,14 +246,56 @@ func codexResponsesToolsToChat(rawTools []json.RawMessage) ([]codexChatTool, err
 		tool := codexChatTool{Type: "function", Function: codexChatToolFunction{
 			Name:        name,
 			Description: stringMapValue(item, "description"),
-			Parameters:  item["parameters"],
+			Parameters:  codexOpenAICompatibleToolParameters(item["parameters"]),
 		}}
-		if strict, ok := item["strict"].(bool); ok {
-			tool.Function.Strict = &strict
-		}
 		tools = append(tools, tool)
 	}
 	return tools, nil
+}
+
+func codexOpenAICompatibleToolParameters(value any) map[string]any {
+	parameters, ok := value.(map[string]any)
+	if !ok || parameters == nil {
+		return map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		}
+	}
+	result := sanitizeOpenAICompatibleSchemaMap(parameters)
+	if stringMapValue(result, "type") == "" {
+		result["type"] = "object"
+	}
+	if _, ok := result["properties"]; !ok {
+		result["properties"] = map[string]any{}
+	}
+	return result
+}
+
+func sanitizeOpenAICompatibleSchemaMap(source map[string]any) map[string]any {
+	result := make(map[string]any, len(source))
+	for key, value := range source {
+		switch key {
+		case "$schema", "$id":
+			continue
+		}
+		result[key] = sanitizeOpenAICompatibleSchemaValue(value)
+	}
+	return result
+}
+
+func sanitizeOpenAICompatibleSchemaValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return sanitizeOpenAICompatibleSchemaMap(typed)
+	case []any:
+		result := make([]any, len(typed))
+		for index, item := range typed {
+			result[index] = sanitizeOpenAICompatibleSchemaValue(item)
+		}
+		return result
+	default:
+		return value
+	}
 }
 
 func codexResponsesToolChoiceToChat(raw json.RawMessage) (any, error) {

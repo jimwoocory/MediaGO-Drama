@@ -316,10 +316,10 @@ func TestOpenCodexRelayRequestRejectsMissingLocalBearer(t *testing.T) {
 
 func TestCheckCodexRelayAuthenticatesUpstream(t *testing.T) {
 	var gotAuth string
-	var gotPath string
+	var gotPaths []string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		gotAuth = request.Header.Get("Authorization")
-		gotPath = request.URL.Path
+		gotPaths = append(gotPaths, request.URL.Path)
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(writer, `{"data":[{"id":"GPT-5.5"},{"id":"gpt-5.4"},{"id":"GPT-5.4-Mini"},{"id":"gpt-5.6-terra"},{"id":"codex-auto-review"},{"id":"gpt-5.6-luna"},{"id":"gpt-5.6-sol"},{"id":"gpt-5.6-sol"},{"id":"  "},{"object":"model"}]}`)
 	}))
@@ -359,8 +359,9 @@ func TestCheckCodexRelayAuthenticatesUpstream(t *testing.T) {
 	if gotAuth != "Bearer sk-upstream-check" {
 		t.Fatalf("authorization = %q, want stored upstream key", gotAuth)
 	}
-	if gotPath != "/v1/models" {
-		t.Fatalf("path = %q, want models check path", gotPath)
+	wantPaths := []string{"/v1/models", "/v1/responses", "/v1/chat/completions"}
+	if !reflect.DeepEqual(gotPaths, wantPaths) {
+		t.Fatalf("paths = %#v, want capability probe paths %#v", gotPaths, wantPaths)
 	}
 	wantModels := []string{
 		"gpt-5.6-sol",
@@ -418,10 +419,10 @@ func TestCheckCodexRelayKeepsConnectivitySuccessWhenModelCatalogIsMalformed(t *t
 
 func TestCheckCodexRelayCanProbeSelectedProfile(t *testing.T) {
 	var gotAuth string
-	var gotPath string
+	var gotPaths []string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		gotAuth = request.Header.Get("Authorization")
-		gotPath = request.URL.Path
+		gotPaths = append(gotPaths, request.URL.Path)
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(writer, `{"data":[]}`)
 	}))
@@ -471,8 +472,9 @@ func TestCheckCodexRelayCanProbeSelectedProfile(t *testing.T) {
 	if gotAuth != "Bearer sk-selected-check" {
 		t.Fatalf("authorization = %q, want selected profile key", gotAuth)
 	}
-	if gotPath != "/v1/models" {
-		t.Fatalf("path = %q, want models check path", gotPath)
+	wantPaths := []string{"/v1/models", "/v1/responses", "/v1/chat/completions"}
+	if !reflect.DeepEqual(gotPaths, wantPaths) {
+		t.Fatalf("paths = %#v, want capability probe paths %#v", gotPaths, wantPaths)
 	}
 }
 
@@ -519,6 +521,31 @@ func TestCheckCodexRelayReportsInvalidAPIKey(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexRelayProfileStripsOpenAIEndpointSuffix(t *testing.T) {
+	for _, baseURL := range []string{
+		"https://tokease.cn/v1/chat/completions",
+		"https://aihubmix.com/v1/responses",
+		"https://relay.example.com/v1/models",
+	} {
+		profile, err := normalizeCodexRelayProfile(CodexRelayProfileMutation{
+			ID:       "relay",
+			Name:     "Relay",
+			BaseURL:  baseURL,
+			Model:    "deepseek-v4-flash",
+			Protocol: CodexRelayProtocolChatCompletions,
+			Enabled:  true,
+		})
+		if err != nil {
+			t.Fatalf("normalizeCodexRelayProfile(%q): %v", baseURL, err)
+		}
+		want := strings.TrimSuffix(baseURL, "/chat/completions")
+		want = strings.TrimSuffix(want, "/responses")
+		want = strings.TrimSuffix(want, "/models")
+		if profile.BaseURL != want {
+			t.Fatalf("baseURL = %q, want %q", profile.BaseURL, want)
+		}
+	}
+}
 func TestCodexRelayUpstreamURLNormalizesVersionPrefix(t *testing.T) {
 	got, err := codexRelayUpstreamURL("https://relay.example.com/v1", "/v1/responses")
 	if err != nil {

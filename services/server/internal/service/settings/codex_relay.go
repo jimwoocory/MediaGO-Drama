@@ -34,9 +34,11 @@ const (
 type CodexRelayProtocol string
 
 const (
+	// CodexRelayProtocolAuto uses the last detected compatible protocol, falling back to Chat Completions before detection.
+	CodexRelayProtocolAuto CodexRelayProtocol = "auto"
 	// CodexRelayProtocolResponses sends Codex Responses API payloads to a compatible upstream.
 	CodexRelayProtocolResponses CodexRelayProtocol = "responses"
-	// CodexRelayProtocolChatCompletions is reserved for a protocol converter phase.
+	// CodexRelayProtocolChatCompletions converts Codex Responses requests to Chat Completions.
 	CodexRelayProtocolChatCompletions CodexRelayProtocol = "chatCompletions"
 )
 
@@ -49,13 +51,14 @@ type CodexRelayAPIKeyStatus struct {
 
 // CodexRelayProfile describes one Codex relay target.
 type CodexRelayProfile struct {
-	ID       string                 `json:"id"`
-	Name     string                 `json:"name"`
-	BaseURL  string                 `json:"baseURL"`
-	Model    string                 `json:"model"`
-	Protocol CodexRelayProtocol     `json:"protocol"`
-	Enabled  bool                   `json:"enabled"`
-	APIKey   CodexRelayAPIKeyStatus `json:"apiKey"`
+	ID               string                 `json:"id"`
+	Name             string                 `json:"name"`
+	BaseURL          string                 `json:"baseURL"`
+	Model            string                 `json:"model"`
+	Protocol         CodexRelayProtocol     `json:"protocol"`
+	DetectedProtocol CodexRelayProtocol     `json:"detectedProtocol,omitempty"`
+	Enabled          bool                   `json:"enabled"`
+	APIKey           CodexRelayAPIKeyStatus `json:"apiKey"`
 }
 
 // CodexRelaySettingsResponse is returned by the Codex relay settings API.
@@ -72,11 +75,14 @@ type CodexRelayCheckRequest struct {
 
 // CodexRelayCheckResponse describes an upstream reachability check for a relay profile.
 type CodexRelayCheckResponse struct {
-	OK         bool     `json:"ok"`
-	ProfileID  string   `json:"profileId"`
-	BaseURL    string   `json:"baseURL"`
-	StatusCode int      `json:"statusCode"`
-	Models     []string `json:"models"`
+	OK                       bool               `json:"ok"`
+	ProfileID                string             `json:"profileId"`
+	BaseURL                  string             `json:"baseURL"`
+	StatusCode               int                `json:"statusCode"`
+	Models                   []string           `json:"models"`
+	ResponsesSupported       bool               `json:"responsesSupported"`
+	ChatCompletionsSupported bool               `json:"chatCompletionsSupported"`
+	RecommendedProtocol      CodexRelayProtocol `json:"recommendedProtocol,omitempty"`
 }
 
 type codexRelayModelsPayload struct {
@@ -87,12 +93,13 @@ type codexRelayModelsPayload struct {
 
 // CodexRelayProfileMutation stores non-secret profile fields.
 type CodexRelayProfileMutation struct {
-	ID       string             `json:"id"`
-	Name     string             `json:"name"`
-	BaseURL  string             `json:"baseURL"`
-	Model    string             `json:"model"`
-	Protocol CodexRelayProtocol `json:"protocol"`
-	Enabled  bool               `json:"enabled"`
+	ID               string             `json:"id"`
+	Name             string             `json:"name"`
+	BaseURL          string             `json:"baseURL"`
+	Model            string             `json:"model"`
+	Protocol         CodexRelayProtocol `json:"protocol"`
+	DetectedProtocol CodexRelayProtocol `json:"detectedProtocol,omitempty"`
+	Enabled          bool               `json:"enabled"`
 }
 
 // CodexRelaySettingsMutation replaces the non-secret relay settings.
@@ -214,40 +221,152 @@ func (service *Settings) CheckCodexRelay(ctx context.Context, input CodexRelayCh
 	if err != nil {
 		return CodexRelayCheckResponse{}, err
 	}
-	upstreamURL, err := codexRelayUpstreamURL(active.BaseURL, "/v1/models")
-	if err != nil {
-		return CodexRelayCheckResponse{}, err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL, nil)
-	if err != nil {
-		return CodexRelayCheckResponse{}, fmt.Errorf("creating codex relay check request: %w", err)
-	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+apiKey)
-
-	client := &http.Client{Timeout: codexRelayCheckHTTPClient}
-	response, err := client.Do(request)
 	result := CodexRelayCheckResponse{
 		ProfileID: active.ID,
 		BaseURL:   active.BaseURL,
 		Models:    []string{},
 	}
+
+	modelsURL, err := codexRelayUpstreamURL(active.BaseURL, "/v1/models")
+	if err != nil {
+		return result, err
+	}
+	modelsRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
+	if err != nil {
+		return result, fmt.Errorf("creating codex relay check request: %w", err)
+	}
+	modelsRequest.Header.Set("Accept", "application/json")
+	modelsRequest.Header.Set("Authorization", "Bearer "+apiKey)
+	client := &http.Client{Timeout: codexRelayCheckHTTPClient}
+	modelsResponse, err := client.Do(modelsRequest)
 	if err != nil {
 		return result, fmt.Errorf("%w：连接上游失败，请检查 Base URL", ErrCodexRelayCheckFailed)
 	}
-	defer response.Body.Close()
+	modelsBody := readLimitedCodexRelayCheckBody(modelsResponse.Body)
+	modelsResponse.Body.Close()
+	result.StatusCode = modelsResponse.StatusCode
+	if codexRelayCheckStatusAuthFailed(modelsResponse.StatusCode) || codexRelayBodyLooksInvalidAPIKey(modelsBody) {
+		return result, fmt.Errorf("%w：上游返回 %d，请检查 API Key 和 Base URL", ErrCodexRelayCheckFailed, modelsResponse.StatusCode)
+	}
+	if modelsResponse.StatusCode >= http.StatusOK && modelsResponse.StatusCode < http.StatusMultipleChoices {
+		result.Models = codexRelayModelIDs(modelsBody)
+	}
 
-	result.StatusCode = response.StatusCode
+	responsesSupported, _, responsesErr := probeCodexRelayProtocol(ctx, client, active, apiKey, CodexRelayProtocolResponses)
+	chatSupported, _, chatErr := probeCodexRelayProtocol(ctx, client, active, apiKey, CodexRelayProtocolChatCompletions)
+	result.ResponsesSupported = responsesSupported
+	result.ChatCompletionsSupported = chatSupported
+	switch {
+	case responsesSupported:
+		result.RecommendedProtocol = CodexRelayProtocolResponses
+	case chatSupported:
+		result.RecommendedProtocol = CodexRelayProtocolChatCompletions
+	}
+
+	selected := effectiveCodexRelayProtocol(active)
+	if active.Protocol == CodexRelayProtocolAuto && result.RecommendedProtocol != "" {
+		if err := service.persistDetectedCodexRelayProtocol(active.ID, result.RecommendedProtocol); err != nil {
+			return result, err
+		}
+		selected = result.RecommendedProtocol
+	}
+	if selected == CodexRelayProtocolResponses && !responsesSupported {
+		if chatSupported {
+			return result, fmt.Errorf("%w：Responses 不可用；检测到 Chat Completions 可用，建议切换为 Auto 或 Chat Completions", ErrCodexRelayCheckFailed)
+		}
+		return result, fmt.Errorf("%w：Responses 不可用（%v）", ErrCodexRelayCheckFailed, responsesErr)
+	}
+	if selected == CodexRelayProtocolChatCompletions && !chatSupported {
+		if responsesSupported {
+			return result, fmt.Errorf("%w：Chat Completions 不可用；检测到 Responses 可用，建议切换为 Auto 或 Responses", ErrCodexRelayCheckFailed)
+		}
+		return result, fmt.Errorf("%w：Chat Completions 不可用（%v）", ErrCodexRelayCheckFailed, chatErr)
+	}
+	if !responsesSupported && !chatSupported {
+		return result, fmt.Errorf("%w：未检测到兼容的 Responses 或 Chat Completions 端点", ErrCodexRelayCheckFailed)
+	}
+	result.OK = true
+	return result, nil
+}
+
+func probeCodexRelayProtocol(ctx context.Context, client *http.Client, profile CodexRelayProfileMutation, apiKey string, protocol CodexRelayProtocol) (bool, int, error) {
+	var (
+		endpoint string
+		payload  []byte
+		err      error
+	)
+	switch protocol {
+	case CodexRelayProtocolResponses:
+		endpoint, err = codexRelayUpstreamURL(profile.BaseURL, "/v1/responses")
+		payload, _ = json.Marshal(map[string]any{
+			"model":             profile.Model,
+			"input":             "ping",
+			"max_output_tokens": 1,
+			"stream":            false,
+		})
+	case CodexRelayProtocolChatCompletions:
+		endpoint, err = codexRelayChatCompletionsUpstreamURL(profile.BaseURL)
+		payload, _ = json.Marshal(map[string]any{
+			"model":      profile.Model,
+			"messages":   []map[string]string{{"role": "user", "content": "ping"}},
+			"max_tokens": 1,
+			"stream":     false,
+		})
+	default:
+		return false, 0, fmt.Errorf("unsupported probe protocol %q", protocol)
+	}
+	if err != nil {
+		return false, 0, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return false, 0, err
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+apiKey)
+	response, err := client.Do(request)
+	if err != nil {
+		return false, 0, err
+	}
+	defer response.Body.Close()
 	body := readLimitedCodexRelayCheckBody(response.Body)
-	if codexRelayCheckStatusOK(response.StatusCode) && !codexRelayBodyLooksInvalidAPIKey(body) {
-		result.OK = true
-		result.Models = codexRelayModelIDs(body)
-		return result, nil
-	}
 	if codexRelayCheckStatusAuthFailed(response.StatusCode) || codexRelayBodyLooksInvalidAPIKey(body) {
-		return result, fmt.Errorf("%w：上游返回 %d，请检查 API Key 和 Base URL", ErrCodexRelayCheckFailed, response.StatusCode)
+		return false, response.StatusCode, fmt.Errorf("authentication failed")
 	}
-	return result, fmt.Errorf("%w：上游返回 %d，请检查 Base URL 是否正确", ErrCodexRelayCheckFailed, response.StatusCode)
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
+		return true, response.StatusCode, nil
+	}
+	return false, response.StatusCode, fmt.Errorf("upstream returned %d", response.StatusCode)
+}
+
+func (service *Settings) persistDetectedCodexRelayProtocol(profileID string, protocol CodexRelayProtocol) error {
+	if protocol != CodexRelayProtocolResponses && protocol != CodexRelayProtocolChatCompletions {
+		return nil
+	}
+	stored, err := service.loadCodexRelayStoredSettings()
+	if err != nil {
+		return err
+	}
+	changed := false
+	for index := range stored.Profiles {
+		if stored.Profiles[index].ID != profileID {
+			continue
+		}
+		if stored.Profiles[index].DetectedProtocol != protocol {
+			stored.Profiles[index].DetectedProtocol = protocol
+			changed = true
+		}
+		break
+	}
+	if !changed {
+		return nil
+	}
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return fmt.Errorf("encoding codex relay settings: %w", err)
+	}
+	return service.appSettings.SetAppSetting(codexRelaySettingsKey, string(raw))
 }
 
 // PrepareCodexRelayRuntimeConfig writes a Codex home configured for the active relay profile.
@@ -316,7 +435,7 @@ func (service *Settings) OpenCodexRelayRequest(ctx context.Context, method strin
 	upstreamBody := body
 	responseStream := false
 	convertChatResponse := false
-	if active.Protocol == CodexRelayProtocolChatCompletions {
+	if effectiveCodexRelayProtocol(active) == CodexRelayProtocolChatCompletions {
 		cleanPath := strings.SplitN(relayPath, "?", 2)[0]
 		switch cleanPath {
 		case "/v1/models", "/models":
@@ -436,12 +555,13 @@ func (service *Settings) codexRelaySettingsResponse(stored codexRelayStoredSetti
 			return CodexRelaySettingsResponse{}, err
 		}
 		profiles = append(profiles, CodexRelayProfile{
-			ID:       profile.ID,
-			Name:     profile.Name,
-			BaseURL:  profile.BaseURL,
-			Model:    profile.Model,
-			Protocol: profile.Protocol,
-			Enabled:  profile.Enabled,
+			ID:               profile.ID,
+			Name:             profile.Name,
+			BaseURL:          profile.BaseURL,
+			Model:            profile.Model,
+			Protocol:         profile.Protocol,
+			DetectedProtocol: profile.DetectedProtocol,
+			Enabled:          profile.Enabled,
 			APIKey: CodexRelayAPIKeyStatus{
 				Configured: strings.TrimSpace(apiKey) != "",
 				Source:     source,
@@ -514,9 +634,9 @@ func normalizeCodexRelayProfile(profile CodexRelayProfileMutation) (CodexRelayPr
 	if id == "" {
 		return CodexRelayProfileMutation{}, fmt.Errorf("%w: profile id is required", ErrCodexRelayInvalid)
 	}
-	baseURL := strings.TrimRight(strings.TrimSpace(profile.BaseURL), "/")
-	if baseURL == "" || !validHTTPURL(baseURL) {
-		return CodexRelayProfileMutation{}, fmt.Errorf("%w: baseURL must be an http(s) URL", ErrCodexRelayInvalid)
+	baseURL, err := normalizeOpenAICompatibleBaseURL(profile.BaseURL)
+	if err != nil {
+		return CodexRelayProfileMutation{}, fmt.Errorf("%w: %v", ErrCodexRelayInvalid, err)
 	}
 	model := strings.TrimSpace(profile.Model)
 	if model == "" {
@@ -526,20 +646,38 @@ func normalizeCodexRelayProfile(profile CodexRelayProfileMutation) (CodexRelayPr
 	if protocol == "" {
 		protocol = CodexRelayProtocolResponses
 	}
-	if protocol != CodexRelayProtocolResponses && protocol != CodexRelayProtocolChatCompletions {
+	if protocol != CodexRelayProtocolAuto && protocol != CodexRelayProtocolResponses && protocol != CodexRelayProtocolChatCompletions {
 		return CodexRelayProfileMutation{}, fmt.Errorf("%w: unsupported protocol", ErrCodexRelayInvalid)
+	}
+	detectedProtocol := profile.DetectedProtocol
+	if protocol != CodexRelayProtocolAuto {
+		detectedProtocol = ""
+	} else if detectedProtocol != "" && detectedProtocol != CodexRelayProtocolResponses && detectedProtocol != CodexRelayProtocolChatCompletions {
+		return CodexRelayProfileMutation{}, fmt.Errorf("%w: unsupported detected protocol", ErrCodexRelayInvalid)
 	}
 	if name == "" {
 		name = id
 	}
 	return CodexRelayProfileMutation{
-		ID:       id,
-		Name:     name,
-		BaseURL:  baseURL,
-		Model:    model,
-		Protocol: protocol,
-		Enabled:  profile.Enabled,
+		ID:               id,
+		Name:             name,
+		BaseURL:          baseURL,
+		Model:            model,
+		Protocol:         protocol,
+		DetectedProtocol: detectedProtocol,
+		Enabled:          profile.Enabled,
 	}, nil
+}
+
+func effectiveCodexRelayProtocol(profile CodexRelayProfileMutation) CodexRelayProtocol {
+	if profile.Protocol != CodexRelayProtocolAuto {
+		return profile.Protocol
+	}
+	if profile.DetectedProtocol == CodexRelayProtocolResponses || profile.DetectedProtocol == CodexRelayProtocolChatCompletions {
+		return profile.DetectedProtocol
+	}
+	// Compatibility-first before the user runs capability detection.
+	return CodexRelayProtocolChatCompletions
 }
 
 func codexRelayStoredProfileExists(stored codexRelayStoredSettings, profileID string) bool {

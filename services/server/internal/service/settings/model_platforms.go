@@ -203,7 +203,21 @@ func normalizeOpenAICompatibleBaseURL(value string) (string, error) {
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", fmt.Errorf("Base URL must not include credentials, query parameters, or fragments")
 	}
-	return value, nil
+	parsed.Path = normalizeOpenAICompatibleBasePath(parsed.Path)
+	parsed.RawPath = ""
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func normalizeOpenAICompatibleBasePath(value string) string {
+	path := strings.TrimRight(strings.TrimSpace(value), "/")
+	lower := strings.ToLower(path)
+	for _, suffix := range []string{"/chat/completions", "/responses", "/models"} {
+		if strings.HasSuffix(lower, suffix) {
+			path = strings.TrimRight(path[:len(path)-len(suffix)], "/")
+			break
+		}
+	}
+	return path
 }
 
 // ParseModelPlatformIDs parses a comma-separated model platform list.

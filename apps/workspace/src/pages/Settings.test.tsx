@@ -87,21 +87,20 @@ describe("Settings API key page", () => {
 	it("shows the Provider framework with AIHubMix as the unified default", async () => {
 		renderSettings();
 
-		expect(await screen.findByRole("heading", { name: "模型提供方与能力" })).toBeInTheDocument();
-		expect(screen.getByText("Codex")).toBeInTheDocument();
-		expect(screen.getByText("ChatGPT OAuth")).toBeInTheDocument();
-		expect(screen.getByText("后台备用")).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "第三方 Agent API" })).toBeInTheDocument();
 		expect(screen.getByRole("heading", { name: "统一接口（AIHubMix）" })).toBeInTheDocument();
-		expect(screen.getByText(/统一 API 默认使用 AIHubMix/)).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "会员 CLI 接入" })).toBeInTheDocument();
+		expect(screen.getByRole("heading", { name: "自定义接口" })).toBeInTheDocument();
+		expect(screen.queryByRole("heading", { name: "模型提供方与能力" })).not.toBeInTheDocument();
 	});
 	it("keeps the capability matrix independent from credential rows", async () => {
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ aihubmixConfigured: true }));
 
 		renderSettings();
 
-		expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
-		expect(screen.getByText(/已真实接入的能力/)).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "第三方 Agent API" })).toBeInTheDocument();
 		expect(screen.getByText("sk••••••456")).toBeInTheDocument();
+		expect(screen.queryByText(/已真实接入的能力/)).not.toBeInTheDocument();
 	});
 	it("loads AIHubMix Base URL in its independent configuration dialog", async () => {
 		vi.mocked(getAIHubMixSettings).mockResolvedValue({
@@ -120,27 +119,26 @@ describe("Settings API key page", () => {
 	it("does not mark unconfigured third-party providers as configured", async () => {
 		renderSettings();
 
-		expect(await screen.findByText("Codex")).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "第三方 Agent API" })).toBeInTheDocument();
 		expect(screen.queryByText("凭据已配置")).not.toBeInTheDocument();
 		expect(screen.getAllByText("AIHubMix").length).toBeGreaterThan(0);
-		expect(screen.getByText("DeepSeek")).toBeInTheDocument();
 	});
 	it("keeps the Provider framework visible when the model-platform allowlist is empty", async () => {
 		vi.mocked(getModelPlatforms).mockResolvedValue({ platforms: [] });
 
 		renderSettings();
 
-		expect(await screen.findByRole("heading", { name: "模型提供方与能力" })).toBeInTheDocument();
-		expect(screen.getByText("Codex")).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "第三方 Agent API" })).toBeInTheDocument();
 		expect(screen.getAllByText("AIHubMix").length).toBeGreaterThan(0);
+		expect(screen.queryByRole("heading", { name: "模型提供方与能力" })).not.toBeInTheDocument();
 	});
 	it("keeps other providers collapsed by default even when one is configured", async () => {
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ openrouterConfigured: true }));
 		renderSettings();
 
-		expect(await screen.findByRole("button", { name: /其他接入方式/ })).toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "自定义接口" })).not.toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "自定义接口" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "OpenRouter 更多操作" })).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: /其他接入方式/ })).not.toBeInTheDocument();
 	});
 
 	it("saves AIHubMix Base URL and API key together", async () => {
@@ -198,8 +196,7 @@ describe("Settings API key page", () => {
 		vi.mocked(clearAPIKey).mockResolvedValue(apiKeysResponse({}));
 		renderSettings();
 
-		fireEvent.click(await screen.findByRole("button", { name: /其他接入方式/ }));
-		fireEvent.click(screen.getByRole("button", { name: "OpenRouter 更多操作" }));
+		fireEvent.click(await screen.findByRole("button", { name: "OpenRouter 更多操作" }));
 		fireEvent.click(await screen.findByRole("menuitem", { name: "清除 API Key" }));
 
 		expect(clearAPIKey).not.toHaveBeenCalled();
@@ -214,7 +211,7 @@ describe("Settings API key page", () => {
 		);
 		expect(clearAPIKey).not.toHaveBeenCalled();
 
-		fireEvent.click(screen.getByRole("button", { name: "OpenRouter 更多操作" }));
+		fireEvent.click(await screen.findByRole("button", { name: "OpenRouter 更多操作" }));
 		fireEvent.click(await screen.findByRole("menuitem", { name: "清除 API Key" }));
 		fireEvent.click(screen.getByRole("button", { name: "清除 API Key" }));
 
@@ -224,8 +221,9 @@ describe("Settings API key page", () => {
 	it("does not render non-editable routing metadata as form inputs", async () => {
 		renderSettings();
 
-		fireEvent.click(await screen.findByRole("button", { name: /其他接入方式/ }));
-		const customSection = screen.getByRole("heading", { name: "自定义接口" }).closest("section");
+		const customSection = (await screen.findByRole("heading", { name: "自定义接口" })).closest(
+			"section",
+		);
 		expect(customSection).toBeTruthy();
 		fireEvent.click(within(customSection as HTMLElement).getByRole("button", { name: /编辑/ }));
 

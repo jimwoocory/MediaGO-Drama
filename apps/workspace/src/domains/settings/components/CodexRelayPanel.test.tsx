@@ -37,6 +37,9 @@ describe("CodexRelayPanel", () => {
 			baseURL: "https://relay.example.com/v1",
 			statusCode: 200,
 			models: [],
+			responsesSupported: true,
+			chatCompletionsSupported: true,
+			recommendedProtocol: "responses",
 		});
 	});
 
@@ -50,7 +53,7 @@ describe("CodexRelayPanel", () => {
 
 		renderPanel();
 
-		const enabledSwitch = await screen.findByRole("switch", { name: "Codex 中转启用状态" });
+		const enabledSwitch = await screen.findByRole("switch", { name: "第三方 API 启用状态" });
 		expect(enabledSwitch.getAttribute("aria-checked")).toBe("true");
 		fireEvent.click(enabledSwitch);
 
@@ -81,7 +84,7 @@ describe("CodexRelayPanel", () => {
 
 		renderPanel();
 
-		const enabledSwitch = await screen.findByRole("switch", { name: "Codex 中转启用状态" });
+		const enabledSwitch = await screen.findByRole("switch", { name: "第三方 API 启用状态" });
 		fireEvent.click(enabledSwitch);
 
 		await waitFor(() => expect(saveCodexRelaySettings).toHaveBeenCalled());
@@ -104,7 +107,7 @@ describe("CodexRelayPanel", () => {
 		renderPanel(runtimeConfigFetcher);
 		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(1));
 
-		const enabledSwitch = await screen.findByRole("switch", { name: "Codex 中转启用状态" });
+		const enabledSwitch = await screen.findByRole("switch", { name: "第三方 API 启用状态" });
 		expect(enabledSwitch.getAttribute("aria-checked")).toBe("false");
 		fireEvent.click(enabledSwitch);
 
@@ -130,7 +133,7 @@ describe("CodexRelayPanel", () => {
 			"bg-success-surface",
 			"text-success-foreground",
 		);
-		expect(within(relayCard).getByText("需要路由")).toBeInTheDocument();
+		expect(within(relayCard).getByText("第三方 API")).toBeInTheDocument();
 	});
 
 	it("shows the official login as the current channel when routing is disabled", async () => {
@@ -181,11 +184,14 @@ describe("CodexRelayPanel", () => {
 			baseURL: "https://relay.example.com/v1",
 			statusCode: 200,
 			models: [],
+			responsesSupported: true,
+			chatCompletionsSupported: true,
+			recommendedProtocol: "responses",
 		});
 
 		renderPanel();
 
-		fireEvent.click(await screen.findByRole("button", { name: "测试连通性" }));
+		fireEvent.click(await screen.findByRole("button", { name: "检测能力" }));
 
 		await waitFor(() =>
 			expect(saveCodexRelaySettings).toHaveBeenCalledWith({
@@ -206,8 +212,8 @@ describe("CodexRelayPanel", () => {
 		await waitFor(() =>
 			expect(checkCodexRelaySettings).toHaveBeenCalledWith({ profileId: "relay" }),
 		);
-		expect(toastMock.success).toHaveBeenCalledWith("连通性测试通过", {
-			description: "https://relay.example.com/v1",
+		expect(toastMock.success).toHaveBeenCalledWith("能力检测完成", {
+			description: "Responses ✓ · Chat Completions ✓ · 推荐 Responses",
 		});
 	});
 
@@ -221,12 +227,15 @@ describe("CodexRelayPanel", () => {
 			baseURL: "https://relay-two.example.com/v1",
 			statusCode: 200,
 			models: [],
+			responsesSupported: true,
+			chatCompletionsSupported: true,
+			recommendedProtocol: "responses",
 		});
 
 		renderPanel();
 
 		const relayCard = await screen.findByTestId("relay-channel-relay-2");
-		fireEvent.click(within(relayCard).getByRole("button", { name: "测试连通性" }));
+		fireEvent.click(within(relayCard).getByRole("button", { name: "检测能力" }));
 
 		await waitFor(() =>
 			expect(saveCodexRelaySettings).toHaveBeenCalledWith({
@@ -255,8 +264,8 @@ describe("CodexRelayPanel", () => {
 		await waitFor(() =>
 			expect(checkCodexRelaySettings).toHaveBeenCalledWith({ profileId: "relay-2" }),
 		);
-		expect(toastMock.success).toHaveBeenCalledWith("连通性测试通过", {
-			description: "https://relay-two.example.com/v1",
+		expect(toastMock.success).toHaveBeenCalledWith("能力检测完成", {
+			description: "Responses ✓ · Chat Completions ✓ · 推荐 Responses",
 		});
 	});
 
@@ -271,7 +280,7 @@ describe("CodexRelayPanel", () => {
 		renderPanel();
 
 		const relayCard = await screen.findByTestId("relay-channel-relay-2");
-		fireEvent.click(within(relayCard).getByRole("button", { name: "使用中转渠道 Relay 2" }));
+		fireEvent.click(within(relayCard).getByRole("button", { name: "使用第三方 API Relay 2" }));
 
 		await waitFor(() =>
 			expect(saveCodexRelaySettings).toHaveBeenCalledWith({
@@ -297,7 +306,7 @@ describe("CodexRelayPanel", () => {
 				],
 			}),
 		);
-		expect(toastMock.success).toHaveBeenCalledWith("已切换 Codex 渠道", {
+		expect(toastMock.success).toHaveBeenCalledWith("已切换第三方 API", {
 			description: "Relay 2",
 		});
 		expect(checkCodexRelaySettings).toHaveBeenCalledTimes(1);
@@ -320,7 +329,7 @@ describe("CodexRelayPanel", () => {
 		expect(within(relayCard).queryByRole("button", { name: "编辑 Key" })).toBeNull();
 		fireEvent.click(within(relayCard).getByRole("button", { name: "编辑 Relay" }));
 
-		const dialog = await screen.findByRole("dialog", { name: "编辑中转渠道" });
+		const dialog = await screen.findByRole("dialog", { name: "编辑第三方 API" });
 		expect(within(dialog).getByLabelText("名称")).toHaveValue("Relay");
 		expect(within(dialog).getByLabelText("Base URL")).toHaveValue("https://relay.example.com/v1");
 		expect(within(dialog).getByLabelText("API Key")).toHaveValue("");
@@ -340,7 +349,7 @@ describe("CodexRelayPanel", () => {
 		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(1));
 
 		fireEvent.click(await screen.findByRole("button", { name: "编辑 Relay" }));
-		const dialog = await screen.findByRole("dialog", { name: "编辑中转渠道" });
+		const dialog = await screen.findByRole("dialog", { name: "编辑第三方 API" });
 		const input = within(dialog).getByLabelText("API Key") as HTMLInputElement;
 		fireEvent.change(input, { target: { value: "sk-relay-secret" } });
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
@@ -349,7 +358,9 @@ describe("CodexRelayPanel", () => {
 			expect(saveCodexRelayProfileAPIKey).toHaveBeenCalledWith("relay", "sk-relay-secret"),
 		);
 		expect(checkCodexRelaySettings).toHaveBeenCalledTimes(1);
-		await waitFor(() => expect(screen.queryByRole("dialog", { name: "编辑中转渠道" })).toBeNull());
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog", { name: "编辑第三方 API" })).toBeNull(),
+		);
 		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(2));
 	});
 
@@ -376,12 +387,14 @@ describe("CodexRelayPanel", () => {
 			</SWRConfig>,
 		);
 		fireEvent.click(await screen.findByRole("button", { name: "编辑 Relay" }));
-		const dialog = await screen.findByRole("dialog", { name: "编辑中转渠道" });
+		const dialog = await screen.findByRole("dialog", { name: "编辑第三方 API" });
 		fireEvent.change(within(dialog).getByLabelText("API Key"), {
 			target: { value: "sk-relay-secret" },
 		});
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
-		await waitFor(() => expect(screen.queryByRole("dialog", { name: "编辑中转渠道" })).toBeNull());
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog", { name: "编辑第三方 API" })).toBeNull(),
+		);
 
 		const pendingRuntimeConfig = vi.fn(() => new Promise<unknown>(() => {}));
 		view.rerender(
@@ -409,14 +422,14 @@ describe("CodexRelayPanel", () => {
 		await waitFor(() => expect(runtimeConfigFetcher).toHaveBeenCalledTimes(1));
 
 		fireEvent.click(await screen.findByRole("button", { name: "编辑 Relay" }));
-		const dialog = await screen.findByRole("dialog", { name: "编辑中转渠道" });
+		const dialog = await screen.findByRole("dialog", { name: "编辑第三方 API" });
 		fireEvent.change(within(dialog).getByLabelText("API Key"), {
 			target: { value: "sk-invalid-relay" },
 		});
 		fireEvent.click(within(dialog).getByRole("button", { name: "保存配置" }));
 
 		await waitFor(() => expect(checkCodexRelaySettings).toHaveBeenCalledTimes(1));
-		expect(screen.getByRole("dialog", { name: "编辑中转渠道" })).toBeInTheDocument();
+		expect(screen.getByRole("dialog", { name: "编辑第三方 API" })).toBeInTheDocument();
 		expect(toastMock.error).toHaveBeenCalledWith("保存失败", {
 			description: "Codex 中转配置不可用：上游返回 401，请检查 API Key 和 Base URL",
 		});
@@ -432,16 +445,21 @@ describe("CodexRelayPanel", () => {
 
 		renderPanel();
 
-		fireEvent.click(await screen.findByRole("button", { name: "新增中转" }));
-		const profileDialog = await screen.findByRole("dialog", { name: "新增中转渠道" });
+		fireEvent.click(await screen.findByRole("button", { name: "新增第三方 API" }));
+		const profileDialog = await screen.findByRole("dialog", { name: "新增第三方 API" });
 		fireEvent.change(within(profileDialog).getByLabelText("Base URL"), {
 			target: { value: "https://jojocode.com/v1" },
+		});
+		fireEvent.change(within(profileDialog).getByLabelText("Model ID"), {
+			target: { value: "deepseek-v4-flash" },
 		});
 		fireEvent.change(within(profileDialog).getByLabelText("API Key"), {
 			target: { value: "sk-new-relay" },
 		});
 		fireEvent.click(within(profileDialog).getByRole("button", { name: "保存配置" }));
-		await waitFor(() => expect(screen.queryByRole("dialog", { name: "新增中转渠道" })).toBeNull());
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog", { name: "新增第三方 API" })).toBeNull(),
+		);
 
 		await waitFor(() =>
 			expect(saveCodexRelaySettings).toHaveBeenCalledWith({
@@ -450,10 +468,10 @@ describe("CodexRelayPanel", () => {
 				profiles: [
 					{
 						id: "default",
-						name: "默认中转",
+						name: "第三方 API",
 						baseURL: "https://jojocode.com/v1",
-						model: "gpt-5.5",
-						protocol: "responses",
+						model: "deepseek-v4-flash",
+						protocol: "auto",
 						enabled: true,
 					},
 				],
@@ -563,10 +581,10 @@ const responseWithDefault = (
 	profiles: [
 		{
 			id: "default",
-			name: "默认中转",
+			name: "第三方 API",
 			baseURL: "https://jojocode.com/v1",
-			model: "gpt-5.5",
-			protocol: "responses",
+			model: "deepseek-v4-flash",
+			protocol: "auto",
 			enabled: true,
 			apiKey: {
 				configured: false,

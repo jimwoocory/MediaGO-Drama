@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -98,12 +99,58 @@ func TestCodexRelayChatCompletionsAdapterMapsFunctionCallsBothDirections(t *test
 	}
 }
 
+func TestCodexResponsesToolsToChatNormalizesEmptyMCPToolSchema(t *testing.T) {
+	tools, err := codexResponsesToolsToChat([]json.RawMessage{json.RawMessage(`{
+		"type":"function",
+		"name":"mcp_mediago_drama_get_project_config",
+		"description":"read project config",
+		"strict":true,
+		"parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false}
+	}`)})
+	if err != nil {
+		t.Fatalf("codexResponsesToolsToChat returned error: %v", err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("tools = %#v, want one tool", tools)
+	}
+	parameters, ok := tools[0].Function.Parameters.(map[string]any)
+	if !ok {
+		t.Fatalf("parameters = %#v, want object schema", tools[0].Function.Parameters)
+	}
+	if parameters["type"] != "object" {
+		t.Fatalf("type = %#v, want object", parameters["type"])
+	}
+	properties, ok := parameters["properties"].(map[string]any)
+	if !ok || len(properties) != 0 {
+		t.Fatalf("properties = %#v, want empty object", parameters["properties"])
+	}
+	if _, ok := parameters["$schema"]; ok {
+		t.Fatalf("parameters retained $schema: %#v", parameters)
+	}
+	encoded, err := json.Marshal(tools[0])
+	if err != nil {
+		t.Fatalf("marshal tool: %v", err)
+	}
+	if strings.Contains(string(encoded), `"strict"`) {
+		t.Fatalf("chat-compatible tool retained strict: %s", encoded)
+	}
+}
 func TestCheckCodexRelayAllowsChatCompletionsProfile(t *testing.T) {
-	var gotPath string
+	var gotPaths []string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		gotPath = request.URL.Path
+		gotPaths = append(gotPaths, request.URL.Path)
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{"data":[{"id":"deepseek-v4-pro"}]}`)
+		switch request.URL.Path {
+		case "/v1/models":
+			fmt.Fprint(writer, `{"data":[{"id":"deepseek-v4-pro"}]}`)
+		case "/v1/responses":
+			writer.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(writer, `{"error":{"message":"not found"}}`)
+		case "/v1/chat/completions":
+			fmt.Fprint(writer, `{"id":"chatcmpl_probe","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
 	}))
 	defer server.Close()
 
@@ -112,8 +159,78 @@ func TestCheckCodexRelayAllowsChatCompletionsProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckCodexRelay returned error: %v", err)
 	}
-	if !result.OK || gotPath != "/v1/models" || len(result.Models) != 1 || result.Models[0] != "deepseek-v4-pro" {
-		t.Fatalf("result=%#v path=%q", result, gotPath)
+	wantPaths := []string{"/v1/models", "/v1/responses", "/v1/chat/completions"}
+	if !result.OK || result.ResponsesSupported || !result.ChatCompletionsSupported || result.RecommendedProtocol != CodexRelayProtocolChatCompletions || len(result.Models) != 1 || result.Models[0] != "deepseek-v4-pro" || !reflect.DeepEqual(gotPaths, wantPaths) {
+		t.Fatalf("result=%#v paths=%#v", result, gotPaths)
+	}
+}
+
+func TestAutoProtocolPersistsChatDetectionAndUsesChatAdapter(t *testing.T) {
+	var gotPaths []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotPaths = append(gotPaths, request.URL.Path)
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/v1/models":
+			fmt.Fprint(writer, `{"data":[{"id":"deepseek-v4-flash"}]}`)
+		case "/v1/responses":
+			writer.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(writer, `{"error":{"message":"not found"}}`)
+		case "/v1/chat/completions":
+			fmt.Fprint(writer, `{"id":"chatcmpl_1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	service := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		nil,
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+	ctx := context.Background()
+	if _, err := service.SaveCodexRelaySettings(ctx, CodexRelaySettingsMutation{
+		Enabled:         true,
+		ActiveProfileID: "auto-relay",
+		Profiles: []CodexRelayProfileMutation{{
+			ID: "auto-relay", Name: "Auto Relay", BaseURL: server.URL + "/v1", Model: "deepseek-v4-flash", Protocol: CodexRelayProtocolAuto, Enabled: true,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveCodexRelaySettings returned error: %v", err)
+	}
+	if _, err := service.SetCodexRelayProfileAPIKey(ctx, "auto-relay", "sk-auto"); err != nil {
+		t.Fatalf("SetCodexRelayProfileAPIKey returned error: %v", err)
+	}
+
+	check, err := service.CheckCodexRelay(ctx, CodexRelayCheckRequest{})
+	if err != nil {
+		t.Fatalf("CheckCodexRelay returned error: %v", err)
+	}
+	if check.RecommendedProtocol != CodexRelayProtocolChatCompletions {
+		t.Fatalf("recommended protocol = %q, want chat completions", check.RecommendedProtocol)
+	}
+	settings, err := service.GetCodexRelaySettings(ctx)
+	if err != nil {
+		t.Fatalf("GetCodexRelaySettings returned error: %v", err)
+	}
+	if len(settings.Profiles) != 1 || settings.Profiles[0].Protocol != CodexRelayProtocolAuto || settings.Profiles[0].DetectedProtocol != CodexRelayProtocolChatCompletions {
+		t.Fatalf("settings = %#v, want auto profile with detected chat completions", settings)
+	}
+
+	response, err := service.OpenCodexRelayRequest(
+		ctx,
+		http.MethodPost,
+		"/v1/responses",
+		[]byte(`{"model":"deepseek-v4-flash","input":"hello","stream":false}`),
+		http.Header{"Authorization": []string{"Bearer " + codexRelayLocalBearerToken}},
+	)
+	if err != nil {
+		t.Fatalf("OpenCodexRelayRequest returned error: %v", err)
+	}
+	defer response.Body.Close()
+	if got := gotPaths[len(gotPaths)-1]; got != "/v1/chat/completions" {
+		t.Fatalf("runtime upstream path = %q, want /v1/chat/completions", got)
 	}
 }
 

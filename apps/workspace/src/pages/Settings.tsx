@@ -1,7 +1,6 @@
 import {
 	ArrowRight,
 	Check,
-	ChevronDown,
 	Clapperboard,
 	ExternalLink,
 	Ellipsis,
@@ -46,6 +45,7 @@ import {
 import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
 import { generationModelsKey } from "@/domains/generation/api/generation";
 import { CodexAccessPanel } from "@/domains/settings/components/CodexAccessPanel";
+import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
 import { CodexSkillsPanel } from "@/domains/settings/components/CodexSkillsPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
 import { BillingPanel } from "@/domains/billing/components/BillingPanel";
@@ -75,11 +75,7 @@ import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
 import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
-import {
-	ProviderCapabilityMatrix,
-	providerRowElementID,
-	type ProviderCapabilityTarget,
-} from "@/domains/settings/components/ProviderCapabilityMatrix";
+import { providerRowElementID } from "@/domains/settings/components/ProviderCapabilityMatrix";
 
 const jianyingDraftSettingsEnabled: boolean = false;
 const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== "false";
@@ -192,9 +188,8 @@ const APIKeysPanel: React.FC = () => {
 			)
 		: [];
 	const officialProviders = officialAPIKeyProviders(providers, modelPlatforms).filter(
-		(provider) => provider.id !== "speechapi",
+		(provider) => provider.id !== "speechapi" && provider.id !== "aihubmix",
 	);
-	const [otherProvidersExpanded, setOtherProvidersExpanded] = useState(false);
 	const [apiKeys, setAPIKeys] = useState<Record<string, string>>({});
 	const [savingID, setSavingID] = useState<string>();
 	const [clearingID, setClearingID] = useState<string>();
@@ -526,26 +521,6 @@ const APIKeysPanel: React.FC = () => {
 		);
 	};
 
-	const otherProviderIDs = new Set([
-		...customProviders.map((provider) => provider.id),
-		...officialProviders.map((provider) => provider.id),
-	]);
-	const selectProviderFromMatrix = (providerID: string, target: ProviderCapabilityTarget) => {
-		if (target === "codex-access") {
-			useSettingsNavigationStore.getState().setActiveTab("codex-access");
-			return;
-		}
-		if (otherProviderIDs.has(providerID)) {
-			setOtherProvidersExpanded(true);
-		}
-		window.requestAnimationFrame(() => {
-			document.getElementById(providerRowElementID(providerID))?.scrollIntoView({
-				behavior: "smooth",
-				block: "center",
-			});
-		});
-	};
-
 	const renderCustomProvider = (provider: APIKeyProvider) =>
 		renderManualProvider(provider, "custom");
 	const renderOfficialProvider = (provider: APIKeyProvider) =>
@@ -558,13 +533,14 @@ const APIKeysPanel: React.FC = () => {
 	return (
 		<SettingsPanelLayout
 			title="API 密钥"
-			description="Agent、图片、音频、视频按 Provider 能力独立接入；统一 API 默认使用 AIHubMix，本地与会员通道继续保留。"
+			description="配置 Agent、文本、图片、音频、视频使用的官方与第三方 API；不预置任何凭据，按需要独立接入。"
 			icon={<KeyRound className="size-4" />}
 		>
 			<div className="mx-auto w-full max-w-5xl divide-y divide-border">
-				<ProviderCapabilityMatrix
-					onSelectProvider={selectProviderFromMatrix}
-					providers={providers}
+				<CodexRelayPanel
+					embedded
+					title="第三方 Agent API"
+					description="用于 Tokease、AIHubMix、自建网关等 OpenAI-compatible Agent 接口。支持 Auto / Responses / Chat Completions、Model ID 与能力检测。"
 				/>
 				{(isLoading || isModelPlatformsLoading) && providers.length === 0 ? (
 					<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
@@ -599,46 +575,23 @@ const APIKeysPanel: React.FC = () => {
 						{cliProviders.map(renderCLIProvider)}
 					</CredentialCategorySection>
 				) : null}
-				{customProviders.length > 0 || officialProviders.length > 0 ? (
-					<section className="pt-8">
-						<button
-							type="button"
-							aria-expanded={otherProvidersExpanded}
-							onClick={() => setOtherProvidersExpanded(!otherProvidersExpanded)}
-							className="flex w-full items-center justify-between gap-3 text-left"
-						>
-							<div className="min-w-0">
-								<h3 className="text-sm font-semibold text-foreground">其他接入方式</h3>
-								<p className="mt-1 text-xs leading-5 text-muted-foreground">
-									自定义接口与官方供应商凭据，适合已有对应平台账号或额度的场景。
-								</p>
-							</div>
-							<ChevronDown
-								className={cn(
-									"size-4 shrink-0 text-muted-foreground transition-transform",
-									otherProvidersExpanded && "rotate-180",
-								)}
-							/>
-						</button>
-						{otherProvidersExpanded ? (
-							<div className="space-y-6 pt-4">
-								{customProviders.length > 0 ? (
-									<section className="space-y-2.5">
-										<h4 className="text-xs font-medium text-muted-foreground">自定义接口</h4>
-										{customProviders.map(renderCustomProvider)}
-									</section>
-								) : null}
-								{officialProviders.length > 0 ? (
-									<section className="space-y-2.5">
-										<h4 className="text-xs font-medium text-muted-foreground">
-											{modelPlatforms.length > 0 ? "官方供应商" : "供应商"}
-										</h4>
-										{officialProviders.map(renderOfficialProvider)}
-									</section>
-								) : null}
-							</div>
-						) : null}
-					</section>
+				{customProviders.length > 0 ? (
+					<CredentialCategorySection
+						className="py-8"
+						title="自定义接口"
+						description="配置 AIHubMix、Tokease、自建网关或其他 OpenAI-compatible 第三方接口。第三方接口的 Base URL、API Key、协议和模型能力独立管理。"
+					>
+						{customProviders.map(renderCustomProvider)}
+					</CredentialCategorySection>
+				) : null}
+				{officialProviders.length > 0 ? (
+					<CredentialCategorySection
+						className="py-8"
+						title={modelPlatforms.length > 0 ? "官方供应商" : "供应商"}
+						description="直接配置 OpenAI、DeepSeek、Gemini、MiniMax 等官方供应商凭据。"
+					>
+						{officialProviders.map(renderOfficialProvider)}
+					</CredentialCategorySection>
 				) : null}
 			</div>
 		</SettingsPanelLayout>
@@ -705,7 +658,9 @@ const officialAPIKeyProviders = (providers: APIKeyProvider[], platforms: ModelPl
 	const platformProviderIDs = new Set(platforms.map((platform) => platform.apiKeyProviderId));
 	return providers.filter(
 		(provider) =>
-			!knownPlatformProviderIDs.has(provider.id) && !platformProviderIDs.has(provider.id),
+			!knownPlatformProviderIDs.has(provider.id) &&
+			!platformProviderIDs.has(provider.id) &&
+			!fallbackCLIProviderIDs.has(provider.id),
 	);
 };
 

@@ -45,6 +45,7 @@ interface CodexRelayProfileDraft {
 	baseURL: string;
 	model: string;
 	protocol: CodexRelayProtocol;
+	detectedProtocol?: Exclude<CodexRelayProtocol, "auto">;
 	apiKey?: CodexRelayProfile["apiKey"];
 }
 
@@ -63,14 +64,16 @@ export interface CodexOfficialChannel {
 
 interface CodexRelayPanelProps {
 	description?: React.ReactNode;
+	embedded?: boolean;
 	officialChannel?: CodexOfficialChannel;
 	title?: React.ReactNode;
 }
 
 export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
-	description = "配置 Codex ACP 请求使用的本地中转代理。",
+	description = "统一配置第三方 OpenAI-compatible Agent API；Auto 会根据能力检测结果选择 Responses 或 Chat Completions。",
+	embedded = false,
 	officialChannel,
-	title = "Codex 中转",
+	title = "第三方 Agent API",
 }) => {
 	const toast = useToast();
 	const { mutate: mutateGlobal } = useSWRConfig();
@@ -109,7 +112,7 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 		if (busy) return;
 		const nextActiveProfileID = activeProfileID || profiles[0]?.id || "";
 		if (nextEnabled && !nextActiveProfileID) {
-			toast.error("无法开启路由", { description: "请先新增并配置一个中转渠道。" });
+			toast.error("无法开启路由", { description: "请先新增并配置一个第三方 API。" });
 			return;
 		}
 
@@ -138,7 +141,7 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 				}
 			}
 			toast.error(nextEnabled ? "启用失败" : "保存失败", {
-				description: errorMessage(err, "保存 Codex 中转失败。"),
+				description: errorMessage(err, "保存第三方 API 配置失败。"),
 			});
 		} finally {
 			if (settingsSaved) revalidateAgentRuntimeConfig();
@@ -169,7 +172,7 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 			settingsSaved = true;
 			await mutate(nextData, false);
 			await checkCodexRelaySettings({ profileId: profile.id });
-			toast.success("已切换 Codex 渠道", { description: profile.name });
+			toast.success("已切换第三方 API", { description: profile.name });
 		} catch (err) {
 			setEnabled(previousEnabled);
 			setActiveProfileID(previousActiveID);
@@ -184,7 +187,7 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 				}
 			}
 			toast.error("切换失败", {
-				description: errorMessage(err, "Codex 中转配置不可用。"),
+				description: errorMessage(err, "第三方 API 配置不可用。"),
 			});
 		} finally {
 			if (settingsSaved) revalidateAgentRuntimeConfig();
@@ -233,11 +236,11 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 			setProfileDialogOpen(false);
 			setProfileDraft(undefined);
 			setProfileAPIKey("");
-			toast.success(isExisting ? "中转配置已保存" : "中转渠道已新增", {
+			toast.success(isExisting ? "第三方 API 配置已保存" : "第三方 API 已新增", {
 				description: profileDraft.name,
 			});
 		} catch (err) {
-			toast.error("保存失败", { description: errorMessage(err, "保存中转配置失败。") });
+			toast.error("保存失败", { description: errorMessage(err, "保存第三方 API 配置失败。") });
 		} finally {
 			if (runtimeConfigChanged) revalidateAgentRuntimeConfig();
 			setBusy("");
@@ -252,10 +255,11 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 			settingsSaved = true;
 			await mutate(nextData, false);
 			const result = await checkCodexRelaySettings({ profileId: profile.id });
-			toast.success("连通性测试通过", { description: result.baseURL || profile.name });
+			await mutate();
+			toast.success("能力检测完成", { description: capabilitySummary(result) });
 		} catch (err) {
-			toast.error("连通性测试失败", {
-				description: errorMessage(err, "Codex 中转连通性测试失败。"),
+			toast.error("能力检测失败", {
+				description: errorMessage(err, "第三方 API 能力检测失败。"),
 			});
 		} finally {
 			if (settingsSaved) revalidateAgentRuntimeConfig();
@@ -279,10 +283,10 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 			setEnabled(nextEnabled);
 			setActiveProfileID(nextActiveID);
 			revalidateAgentRuntimeConfig();
-			toast.success("中转配置已删除", { description: profile.name });
+			toast.success("第三方 API 配置已删除", { description: profile.name });
 			return true;
 		} catch (err) {
-			toast.error("删除失败", { description: errorMessage(err, "删除中转配置失败。") });
+			toast.error("删除失败", { description: errorMessage(err, "删除第三方 API 配置失败。") });
 			return false;
 		} finally {
 			setBusy("");
@@ -292,7 +296,7 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 	const confirmRemoveProfile = (profile: CodexRelayProfileDraft) => {
 		if (busy) return;
 		void confirmDialog({
-			title: "删除中转配置？",
+			title: "删除第三方 API 配置？",
 			description: `确定要删除“${profile.name}”吗？保存的 Key 不会继续用于 Codex。`,
 			confirmLabel: "删除",
 			confirmIcon: <Trash2 />,
@@ -333,32 +337,28 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 		});
 	};
 
-	return (
-		<SettingsPanelLayout
-			title={title}
-			description={description}
-			icon={<Network className="size-4" />}
-			actions={
-				<>
-					<HeaderEnableSwitch
-						busy={busy === "enabled"}
-						checked={enabled}
-						disabled={busy !== "" || isLoading}
-						onCheckedChange={(nextChecked) => void saveEnabled(nextChecked)}
-					/>
-					<Button
-						type="button"
-						variant="outline"
-						className="rounded-md"
-						disabled={busy !== ""}
-						onClick={openNewProfile}
-					>
-						<Plus />
-						<span>新增中转</span>
-					</Button>
-				</>
-			}
-		>
+	const panelActions = (
+		<>
+			<HeaderEnableSwitch
+				busy={busy === "enabled"}
+				checked={enabled}
+				disabled={busy !== "" || isLoading}
+				onCheckedChange={(nextChecked) => void saveEnabled(nextChecked)}
+			/>
+			<Button
+				type="button"
+				variant="outline"
+				className="rounded-md"
+				disabled={busy !== ""}
+				onClick={openNewProfile}
+			>
+				<Plus />
+				<span>新增第三方 API</span>
+			</Button>
+		</>
+	);
+	const panelContent = (
+		<>
 			<div className="mx-auto w-full max-w-5xl space-y-3">
 				{officialChannel ? (
 					<OfficialChannelCard
@@ -368,14 +368,12 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 						onActivate={activateOfficialChannel}
 					/>
 				) : null}
-
 				{isLoading && profiles.length === 0 ? (
 					<div className="flex items-center justify-center gap-2 rounded-md border border-border py-10 text-sm text-muted-foreground">
 						<Loader2 className="size-4 animate-spin" />
-						<span>正在读取中转渠道</span>
+						<span>正在读取第三方 API</span>
 					</div>
 				) : null}
-
 				{profiles.map((profile) => (
 					<RelayChannelCard
 						key={profile.id}
@@ -388,7 +386,6 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 						onTest={() => void testConnectivity(profile)}
 					/>
 				))}
-
 				{!isLoading && profiles.length === 0 ? (
 					<button
 						type="button"
@@ -396,11 +393,10 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 						onClick={openNewProfile}
 					>
 						<Plus className="size-4" />
-						新增第一个中转渠道
+						新增第一个第三方 API
 					</button>
 				) : null}
 			</div>
-
 			<RelayProfileEditDialog
 				apiKey={profileAPIKey}
 				busy={busy}
@@ -421,6 +417,30 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 					profileDraft && profiles.some((profile) => profile.id === profileDraft.id),
 				)}
 			/>
+		</>
+	);
+	if (embedded) {
+		return (
+			<section className="py-8">
+				<div className="flex flex-wrap items-start justify-between gap-3">
+					<div className="min-w-0 flex-1">
+						<h3 className="text-sm font-semibold text-foreground">{title}</h3>
+						<div className="mt-1 text-xs leading-5 text-muted-foreground">{description}</div>
+					</div>
+					<div className="flex flex-wrap items-center gap-2">{panelActions}</div>
+				</div>
+				<div className="mt-3">{panelContent}</div>
+			</section>
+		);
+	}
+	return (
+		<SettingsPanelLayout
+			title={title}
+			description={description}
+			icon={<Network className="size-4" />}
+			actions={panelActions}
+		>
+			{panelContent}
 		</SettingsPanelLayout>
 	);
 };
@@ -513,7 +533,7 @@ const RelayChannelCard: React.FC<{
 	>
 		<button
 			type="button"
-			aria-label={`使用中转渠道 ${profile.name || "未命名中转"}`}
+			aria-label={`使用第三方 API ${profile.name || "未命名第三方 API"}`}
 			className="flex min-w-0 flex-1 items-center gap-3 px-4 py-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
 			disabled={busy !== ""}
 			onClick={onActivate}
@@ -524,13 +544,17 @@ const RelayChannelCard: React.FC<{
 			<span className="min-w-0 flex-1">
 				<span className="flex flex-wrap items-center gap-2">
 					<span className="truncate text-sm font-semibold text-foreground">
-						{profile.name || "未命名中转"}
+						{profile.name || "未命名第三方 API"}
 					</span>
-					<ChannelTypeBadge>需要路由</ChannelTypeBadge>
+					<ChannelTypeBadge>第三方 API</ChannelTypeBadge>
 					{active ? <CurrentChannelBadge /> : null}
 				</span>
 				<span className="mt-1 block truncate font-mono text-xs text-muted-foreground">
 					{profile.baseURL || "未配置 Base URL"}
+				</span>
+				<span className="mt-1 block truncate text-[11px] text-muted-foreground">
+					{profile.model || "未配置 Model ID"} ·{" "}
+					{protocolLabel(profile.protocol, profile.detectedProtocol)}
 				</span>
 			</span>
 		</button>
@@ -541,7 +565,7 @@ const RelayChannelCard: React.FC<{
 			)}
 		>
 			<ChannelActionButton
-				label="测试连通性"
+				label="检测能力"
 				disabled={busy !== ""}
 				onClick={onTest}
 				loading={busy === `check:${profile.id}`}
@@ -633,7 +657,7 @@ const HeaderEnableSwitch: React.FC<{
 		)}
 	>
 		<Switch
-			aria-label="Codex 中转启用状态"
+			aria-label="第三方 API 启用状态"
 			checked={checked}
 			disabled={disabled}
 			onCheckedChange={onCheckedChange}
@@ -681,10 +705,10 @@ const RelayProfileEditDialog: React.FC<{
 				<div className="flex items-start justify-between gap-3">
 					<div>
 						<DialogPrimitive.Title className="text-sm font-semibold text-foreground">
-							{isExisting ? "编辑中转渠道" : "新增中转渠道"}
+							{isExisting ? "编辑第三方 API" : "新增第三方 API"}
 						</DialogPrimitive.Title>
 						<p className="mt-1 text-xs text-muted-foreground">
-							配置 Codex 中转服务；上游可使用 Responses 或 Chat Completions 协议。
+							配置统一第三方 Agent API；推荐选择 Auto，检测后自动使用兼容协议。
 						</p>
 					</div>
 					<DialogClose asChild>
@@ -708,7 +732,13 @@ const RelayProfileEditDialog: React.FC<{
 							<span className="mb-2 block text-xs text-muted-foreground">Base URL</span>
 							<Input
 								value={draft.baseURL}
-								onChange={(event) => onDraftChange({ ...draft, baseURL: event.target.value })}
+								onChange={(event) =>
+									onDraftChange({
+										...draft,
+										baseURL: event.target.value,
+										detectedProtocol: undefined,
+									})
+								}
 								placeholder="https://relay.example.com/v1"
 								className="rounded-md font-mono"
 							/>
@@ -717,7 +747,13 @@ const RelayProfileEditDialog: React.FC<{
 							<span className="mb-2 block text-xs text-muted-foreground">Model ID</span>
 							<Input
 								value={draft.model}
-								onChange={(event) => onDraftChange({ ...draft, model: event.target.value })}
+								onChange={(event) =>
+									onDraftChange({
+										...draft,
+										model: event.target.value,
+										detectedProtocol: undefined,
+									})
+								}
 								placeholder="gpt-5.6-terra"
 								className="rounded-md font-mono"
 							/>
@@ -727,16 +763,21 @@ const RelayProfileEditDialog: React.FC<{
 							<select
 								value={draft.protocol}
 								onChange={(event) =>
-									onDraftChange({ ...draft, protocol: event.target.value as CodexRelayProtocol })
+									onDraftChange({
+										...draft,
+										protocol: event.target.value as CodexRelayProtocol,
+										detectedProtocol: undefined,
+									})
 								}
 								className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
 							>
+								<option value="auto">Auto（推荐）</option>
 								<option value="responses">Responses</option>
 								<option value="chatCompletions">Chat Completions</option>
 							</select>
 							<p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
-								Codex 本地始终使用 Responses；选择 Chat Completions 时由 MediaGo
-								自动转换请求、工具调用和响应流。
+								Codex 本地始终使用 Responses；Auto
+								会使用最近一次能力检测结果。未检测时优先采用兼容性更高的 Chat Completions。
 							</p>
 						</label>
 						<div className="grid gap-2">
@@ -784,7 +825,9 @@ const RelayProfileEditDialog: React.FC<{
 					<Button
 						type="button"
 						className="rounded-md"
-						disabled={busy !== "" || !draft?.name.trim() || !draft.baseURL.trim()}
+						disabled={
+							busy !== "" || !draft?.name.trim() || !draft.baseURL.trim() || !draft.model.trim()
+						}
 						onClick={onSave}
 					>
 						{busy === `profile:${draft?.id}` ? <Loader2 className="animate-spin" /> : null}
@@ -799,8 +842,9 @@ const draftFromProfile = (profile: CodexRelayProfile): CodexRelayProfileDraft =>
 	id: profile.id,
 	name: profile.name,
 	baseURL: profile.baseURL,
-	model: profile.model || "gpt-5.5",
+	model: profile.model,
 	protocol: profile.protocol,
+	detectedProtocol: profile.detectedProtocol,
 	apiKey: profile.apiKey,
 });
 
@@ -813,10 +857,10 @@ const nextDefaultDraft = (profiles: CodexRelayProfileDraft[]): CodexRelayProfile
 	}
 	return {
 		id,
-		name: index <= 1 ? "默认中转" : `中转 ${index}`,
+		name: index <= 1 ? "第三方 API" : `第三方 API ${index}`,
 		baseURL: "",
-		model: "gpt-5.5",
-		protocol: "responses",
+		model: "",
+		protocol: "auto",
 		apiKey: { configured: false, source: "none" },
 	};
 };
@@ -825,10 +869,37 @@ const mutationFromDraft = (draft: CodexRelayProfileDraft): CodexRelayProfileMuta
 	id: draft.id,
 	name: draft.name.trim(),
 	baseURL: draft.baseURL.trim(),
-	model: draft.model.trim() || "gpt-5.5",
+	model: draft.model.trim(),
 	protocol: draft.protocol,
+	detectedProtocol: draft.detectedProtocol,
 	enabled: true,
 });
+
+const protocolLabel = (
+	protocol: CodexRelayProtocol,
+	detected?: Exclude<CodexRelayProtocol, "auto">,
+) => {
+	if (protocol === "auto")
+		return detected
+			? `Auto → ${detected === "responses" ? "Responses" : "Chat Completions"}`
+			: "Auto · 待检测";
+	return protocol === "responses" ? "Responses" : "Chat Completions";
+};
+
+const capabilitySummary = (result: {
+	responsesSupported: boolean;
+	chatCompletionsSupported: boolean;
+	recommendedProtocol?: Exclude<CodexRelayProtocol, "auto">;
+	models: string[];
+}) => {
+	const responses = result.responsesSupported ? "Responses ✓" : "Responses ×";
+	const chat = result.chatCompletionsSupported ? "Chat Completions ✓" : "Chat Completions ×";
+	const recommended = result.recommendedProtocol
+		? `推荐 ${result.recommendedProtocol === "responses" ? "Responses" : "Chat Completions"}`
+		: "未找到兼容协议";
+	const models = result.models.length > 0 ? ` · ${result.models.length} 个模型` : "";
+	return `${responses} · ${chat} · ${recommended}${models}`;
+};
 
 const errorMessage = (err: unknown, fallback: string) => {
 	if (err instanceof Error && err.message) return err.message;

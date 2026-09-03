@@ -93,7 +93,7 @@ export interface AgentModelProfilesResponse {
 	templates: AgentModelProfileTemplate[];
 }
 
-export type CodexRelayProtocol = "responses" | "chatCompletions";
+export type CodexRelayProtocol = "auto" | "responses" | "chatCompletions";
 
 export interface CodexRelayAPIKeyStatus {
 	configured: boolean;
@@ -107,6 +107,7 @@ export interface CodexRelayProfile {
 	baseURL: string;
 	model: string;
 	protocol: CodexRelayProtocol;
+	detectedProtocol?: Exclude<CodexRelayProtocol, "auto">;
 	enabled: boolean;
 	apiKey: CodexRelayAPIKeyStatus;
 }
@@ -123,6 +124,9 @@ export interface CodexRelayCheckResponse {
 	baseURL: string;
 	statusCode: number;
 	models: string[];
+	responsesSupported: boolean;
+	chatCompletionsSupported: boolean;
+	recommendedProtocol?: Exclude<CodexRelayProtocol, "auto">;
 }
 
 export interface CodexRelayCheckRequest {
@@ -135,6 +139,7 @@ export interface CodexRelayProfileMutation {
 	baseURL: string;
 	model: string;
 	protocol: CodexRelayProtocol;
+	detectedProtocol?: Exclude<CodexRelayProtocol, "auto">;
 	enabled: boolean;
 }
 
