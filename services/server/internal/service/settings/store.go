@@ -781,19 +781,11 @@ func (service *Settings) ProviderLabel(keyName string) string {
 }
 
 func (service *Settings) apiKeyProviders() []APIKeyProvider {
-	providers := apiKeyProviders()
-	enabledCLIProviders := enabledGenerationCLIProviderSet(service.GenerationCLIProviderIDs())
-	filtered := make([]APIKeyProvider, 0, len(providers))
-	for _, provider := range providers {
-		if !service.GenerationProviderEnabled(provider.ID) {
-			continue
-		}
-		if isGenerationCLIProvider(provider.ID) && !enabledCLIProviders[provider.ID] {
-			continue
-		}
-		filtered = append(filtered, provider)
-	}
-	return filtered
+	// Configuration visibility is intentionally independent from runtime enablement.
+	// A clean MediaGo install must expose every supported credential entry as
+	// unconfigured, while MODEL_PLATFORM / generation CLI settings continue to
+	// decide which providers are runnable.
+	return apiKeyProviders()
 }
 
 func apiKeyProviders() []APIKeyProvider {

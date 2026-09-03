@@ -113,29 +113,42 @@ func TestSettingsListAPIKeysIncludesGenerationAndAgentProviders(t *testing.T) {
 	}
 }
 
-func TestSettingsListAPIKeysExcludesAggregationProvidersOutsideBuildAllowlist(t *testing.T) {
+func TestSettingsListAPIKeysKeepsConfigurationEntriesVisibleOutsideRuntimeAllowlist(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{
 		generation.ProviderMediago:    "mgak-existing",
 		generation.ProviderOpenRouter: "sk-openrouter-existing",
 		generation.ProviderDMX:        "sk-dmx-existing",
 	}})
 	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter})
+	settings.SetGenerationCLIs([]string{})
 
 	list, err := settings.ListAPIKeys(context.Background())
 	if err != nil {
 		t.Fatalf("ListAPIKeys returned error: %v", err)
 	}
-	if apiKeyProviderExists(list, generation.ProviderMediago) {
-		t.Fatalf("providers = %#v, want MediaGo hidden outside MODEL_PLATFORM", list.Providers)
+	for _, providerID := range []string{
+		generation.ProviderMediago,
+		generation.ProviderOpenRouter,
+		generation.ProviderDMX,
+		generation.ProviderSpeechAPI,
+		generation.ProviderVideoAPI,
+		generation.ProviderJimeng,
+		generation.ProviderLibTV,
+		generation.ProviderXiaoyunque,
+		agentModelProviderAIHubMix,
+	} {
+		if !apiKeyProviderExists(list, providerID) {
+			t.Fatalf("providers = %#v, want configuration entry %q visible", list.Providers, providerID)
+		}
 	}
-	if apiKeyProviderExists(list, generation.ProviderDMX) {
-		t.Fatalf("providers = %#v, want DMXAPI hidden outside MODEL_PLATFORM", list.Providers)
+	if settings.GenerationProviderEnabled(generation.ProviderMediago) {
+		t.Fatal("MediaGo runtime provider should remain disabled outside MODEL_PLATFORM")
 	}
-	if !apiKeyProviderExists(list, generation.ProviderOpenRouter) {
-		t.Fatalf("providers = %#v, want enabled OpenRouter platform", list.Providers)
+	if settings.GenerationProviderEnabled(generation.ProviderDMX) {
+		t.Fatal("DMX runtime provider should remain disabled outside MODEL_PLATFORM")
 	}
-	if !apiKeyProviderExists(list, generation.ProviderOpenAI) {
-		t.Fatalf("providers = %#v, want official providers unaffected", list.Providers)
+	if !settings.GenerationProviderEnabled(generation.ProviderOpenRouter) {
+		t.Fatal("OpenRouter runtime provider should remain enabled by MODEL_PLATFORM")
 	}
 }
 
