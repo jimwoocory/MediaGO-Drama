@@ -1,5 +1,6 @@
 export const desktopIpcChannel = {
 	authenticateStartup: "desktop:authenticate-startup",
+	getSidecarOrigin: "desktop:get-sidecar-origin",
 	openExternal: "desktop:open-external",
 	openPath: "desktop:open-path",
 	revealPath: "desktop:reveal-path",

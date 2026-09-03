@@ -34,6 +34,7 @@ import type {
 export interface MediagoDesktopAPI {
 	platform: NodeJS.Platform;
 	isElectron: true;
+	sidecarOrigin?: string;
 	openExternal(url: string): Promise<void>;
 	openPath(path: string): Promise<void>;
 	revealPath(path: string): Promise<void>;

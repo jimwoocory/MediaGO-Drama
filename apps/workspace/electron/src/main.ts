@@ -39,6 +39,7 @@ import {
 	startServerSidecar,
 	stopServerSidecar,
 } from "./sidecar.js";
+import { waitForSidecarReadiness } from "./sidecar-readiness.js";
 import { validateStartupCredentials } from "./startup-auth.js";
 import { startupLoginHTML } from "./startup-login-page.js";
 import { registerDesktopUpdater } from "./updater.js";
@@ -78,7 +79,7 @@ const trustedRendererOptions = {
 	packaged: app.isPackaged,
 };
 
-const authorizeDesktopIpc = (event: Electron.IpcMainInvokeEvent) => {
+const authorizeDesktopIpc = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent) => {
 	assertTrustedIpcSender(event, trustedRendererOptions);
 };
 
@@ -398,6 +399,15 @@ ipcMain.handle(desktopIpcChannel.authenticateStartup, async (event, value: unkno
 	}
 });
 
+ipcMain.on(desktopIpcChannel.getSidecarOrigin, (event) => {
+	try {
+		authorizeDesktopIpc(event);
+		event.returnValue = sidecarConnection?.origin;
+	} catch {
+		event.returnValue = undefined;
+	}
+});
+
 ipcMain.handle(desktopIpcChannel.openExternal, async (event, url: string) => {
 	authorizeDesktopIpc(event);
 	await openExternalURL(url);
@@ -588,7 +598,10 @@ const startWorkspace = async () => {
 	try {
 		preparePackagedWorkspace();
 		sidecarConnection = await startServerSidecar();
-		if (sidecarConnection) authenticateSidecarRequests(sidecarConnection);
+		if (sidecarConnection) {
+			authenticateSidecarRequests(sidecarConnection);
+			await waitForSidecarReadiness(sidecarConnection);
+		}
 		registerRendererProtocol(sidecarConnection);
 		registerDesktopUpdater({
 			authorizeIpcSender: authorizeDesktopIpc,

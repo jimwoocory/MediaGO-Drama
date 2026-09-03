@@ -22,6 +22,14 @@ const api = {
 			message?: string;
 		}>,
 	isElectron: true,
+	sidecarOrigin: (() => {
+		try {
+			const origin = ipcRenderer.sendSync(desktopIpcChannel.getSidecarOrigin);
+			return typeof origin === "string" ? origin : undefined;
+		} catch {
+			return undefined;
+		}
+	})(),
 	openExternal: (url: string) => ipcRenderer.invoke(desktopIpcChannel.openExternal, url),
 	openPath: (path: string) => ipcRenderer.invoke(desktopIpcChannel.openPath, path),
 	revealPath: (path: string) => ipcRenderer.invoke(desktopIpcChannel.revealPath, path),

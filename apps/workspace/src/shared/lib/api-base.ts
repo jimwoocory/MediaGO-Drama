@@ -1,13 +1,15 @@
 import { isDesktopRuntime as detectDesktopRuntime } from "@/shared/desktop/runtime";
 
 const devLocalServerPort = "8080";
-const packagedLocalServerPort = "48273";
 
-const localServerPort = () =>
-	import.meta.env.VITE_MEDIAGO_SERVER_PORT?.trim() ||
-	(import.meta.env.DEV ? devLocalServerPort : packagedLocalServerPort);
+const localServerOrigin = () => {
+	const sidecarOrigin = window.mediagoDesktop?.sidecarOrigin?.trim();
+	if (sidecarOrigin) return sidecarOrigin;
+	if (!import.meta.env.DEV) return "";
+	const port = import.meta.env.VITE_MEDIAGO_SERVER_PORT?.trim() || devLocalServerPort;
+	return `http://127.0.0.1:${port}`;
+};
 
-const localServerOrigin = () => `http://127.0.0.1:${localServerPort()}`;
 const apiBasePath = "/api/v1";
 
 export { detectDesktopRuntime as isDesktopRuntime };
