@@ -161,9 +161,12 @@ type AgentRuntimeSelectConfig struct {
 
 // AgentRuntimeSelectOption is an option inside a runtime select control.
 type AgentRuntimeSelectOption struct {
-	Value       string `json:"value"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	Value         string `json:"value"`
+	Name          string `json:"name"`
+	Description   string `json:"description,omitempty"`
+	ProviderID    string `json:"providerId,omitempty"`
+	ProviderLabel string `json:"providerLabel,omitempty"`
+	ModelID       string `json:"modelId,omitempty"`
 }
 
 // AgentEvent is the event projection streamed to the workspace UI.

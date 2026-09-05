@@ -23,6 +23,7 @@ type ProviderInfo struct {
 func Providers() []ProviderInfo {
 	labels := credentialLabels()
 	providers := []ProviderInfo{
+		{ID: ProviderUnified, Label: "统一接口", ProviderType: ProviderTypeAggregator},
 		{ID: ProviderOpenAI, Label: labels[ProviderOpenAI], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderGoogle, Label: labels[ProviderGoogle], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderMiniMax, Label: labels[ProviderMiniMax], ProviderType: ProviderTypeOfficial},

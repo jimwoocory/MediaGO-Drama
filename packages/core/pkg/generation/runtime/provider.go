@@ -18,6 +18,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/pippit"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/speechapi"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/unified"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/videoapi"
 )
 
@@ -55,6 +56,7 @@ type Config struct {
 	SpeechAPIVoice    string
 	VideoAPIBaseURL   string
 	VideoAPIModel     string
+	UnifiedBaseURL    string
 
 	OpenAIBaseURL     string
 	GoogleBaseURL     string
@@ -204,6 +206,12 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 			return provider.speechAPIProvider(ctx)
 		case generation.ProviderVideoAPI:
 			return provider.videoAPIProvider(ctx)
+		case generation.ProviderUnified:
+			key, err := provider.credential(ctx, generation.ProviderUnified)
+			if err != nil {
+				return nil, err
+			}
+			return unified.NewProvider(unified.Config{BaseURL: provider.config.UnifiedBaseURL, APIKey: key, Route: route, HTTPClient: provider.config.HTTPClient})
 		default:
 			return nil, fmt.Errorf("generation provider %q is not implemented", route.Provider)
 		}

@@ -59,7 +59,10 @@ describe("generation workspace helpers", () => {
 
 	it("resolves local API asset URLs for packaged desktop previews", () => {
 		vi.stubEnv("DEV", false);
-		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		window.mediagoDesktop = {
+			isElectron: true,
+			sidecarOrigin: "http://127.0.0.1:48273",
+		} as typeof window.mediagoDesktop;
 
 		const asset = {
 			kind: "image" as const,

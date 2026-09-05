@@ -325,7 +325,7 @@ export const clearCodexRelayProfileAPIKey = async (profileID: string) => {
 };
 
 export const getCodexAccount = async () => {
-	const response = await httpClient.get<CodexAccountStatus>(codexAccountKey);
+	const response = await httpClient.get<CodexAccountStatus>(codexAccountKey, { timeout: 30000 });
 	return response.data;
 };
 

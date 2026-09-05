@@ -8,6 +8,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestWorkspaceStateServiceRecoversFilesystemProjectManifest(t *testing.T) {
@@ -20,6 +21,7 @@ func TestWorkspaceStateServiceRecoversFilesystemProjectManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 
 	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
 	if err := store.InitErr(); err != nil {
@@ -47,6 +49,7 @@ func TestWorkspaceStateServiceBackfillsBlankProjectDirFromCanonicalManifest(t *t
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 	if err := repos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
 		ID:          projectID,
@@ -81,6 +84,7 @@ func TestWorkspaceStateServiceKeepsBlankProjectDirWhenDirectoryMissing(t *testin
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 	if err := repos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
 		ID:          projectID,
@@ -130,6 +134,7 @@ func TestWorkspaceStateServiceCleansDeprecatedStudioProjectDirs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 	if err := repos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
 		ID:          legacyProjectID,
@@ -193,6 +198,7 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 	for _, project := range []domain.WorkspaceProjectModel{
 		{

@@ -21,11 +21,20 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	pool, err := repos.DB.DB()
+	if err != nil {
+		panic(err)
+	}
 	store := promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, nil)
 	SetPromptTemplateStore(prompttemplates.NewServiceFromRepository(repos.Instructions, nil))
 	serviceskill.SetPromptPackStore(store)
 	code := m.Run()
-	_ = os.RemoveAll(dir)
+	if err := pool.Close(); err != nil {
+		code = 1
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		code = 1
+	}
 	os.Exit(code)
 }
 

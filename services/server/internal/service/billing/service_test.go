@@ -8,6 +8,7 @@ import (
 	corecapability "github.com/mediago-dev/mediago-drama/services/server/internal/capability"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 	"gorm.io/gorm"
 )
 
@@ -251,6 +252,7 @@ func billingTestRepos(t *testing.T) repository.WorkspaceRepositories {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	return repos
 }
 

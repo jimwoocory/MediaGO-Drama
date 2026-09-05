@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestAgentModelProfileRepositoryCRUDAndDefault(t *testing.T) {
@@ -12,6 +13,7 @@ func TestAgentModelProfileRepositoryCRUDAndDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAgentModelProfileRepository returned error: %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 
 	first := domain.AgentModelProfileModel{
 		ID:               "minimax",

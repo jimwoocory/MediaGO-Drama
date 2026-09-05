@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestGenerationNotificationRepositoryLifecycle(t *testing.T) {
@@ -12,6 +13,7 @@ func TestGenerationNotificationRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGenerationNotificationRepository() error = %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 	seedRepositoryProject(t, repo.db, "project-a")
 	if err := repo.db.Create(&domain.GenerationConversationModel{
 		ID:        "conversation-1",

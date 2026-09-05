@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 type legacyAgentSelectionModel struct {
@@ -39,6 +40,7 @@ func newAgentSelectionRepositoryTest(t *testing.T) (*AgentSelectionRepository, s
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	projectID := "project-agent-selection-repo"
 	now := time.Now().UTC()
 	if err := db.Create(&domain.WorkspaceProjectModel{
@@ -213,6 +215,7 @@ func TestEnsureWorkspaceSchemaAddsGenerationClaimColumnsWithoutLosingSelections(
 	if err != nil {
 		t.Fatalf("OpenGormSQLite() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	if err := db.AutoMigrate(&domain.WorkspaceProjectModel{}, &legacyAgentSelectionModel{}); err != nil {
 		t.Fatalf("creating legacy schema: %v", err)
 	}
@@ -259,6 +262,7 @@ func TestEnsureWorkspaceSchemaBackfillsLegacyAgentSelectionOwnership(t *testing.
 	if err != nil {
 		t.Fatalf("OpenGormSQLite() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	if err := db.AutoMigrate(&domain.WorkspaceProjectModel{}, &legacyAgentSelectionModel{}); err != nil {
 		t.Fatalf("creating legacy schema: %v", err)
 	}
@@ -321,6 +325,7 @@ func TestEnsureWorkspaceSchemaBackfillsAgentSelectionWhenOwnershipColumnsAreAbse
 	if err != nil {
 		t.Fatalf("OpenGormSQLite() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	if err := db.AutoMigrate(&domain.WorkspaceProjectModel{}); err != nil {
 		t.Fatalf("creating project schema: %v", err)
 	}

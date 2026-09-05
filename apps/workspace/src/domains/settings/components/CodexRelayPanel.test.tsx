@@ -75,7 +75,7 @@ describe("CodexRelayPanel", () => {
 		);
 		await waitFor(() => expect(enabledSwitch.getAttribute("aria-checked")).toBe("false"));
 		expect(checkCodexRelaySettings).not.toHaveBeenCalled();
-		expect(toastMock.success).toHaveBeenCalledWith("已切换到 ChatGPT 官方订阅");
+		expect(toastMock.success).toHaveBeenCalledWith("默认供应商已设为 ChatGPT OAuth");
 	});
 
 	it("rolls back the header switch and shows the save error when settings are invalid", async () => {
@@ -126,7 +126,7 @@ describe("CodexRelayPanel", () => {
 		renderPanel();
 
 		const relayCard = await screen.findByTestId("relay-channel-relay");
-		const currentChannelBadge = within(relayCard).getByText("当前渠道");
+		const currentChannelBadge = within(relayCard).getByText("默认供应商");
 		expect(currentChannelBadge).toBeInTheDocument();
 		expect(currentChannelBadge).toHaveClass(
 			"border-success-border",
@@ -144,7 +144,7 @@ describe("CodexRelayPanel", () => {
 		const officialCard = await screen.findByTestId("official-channel-card");
 		expect(within(officialCard).getByText("ChatGPT 官方订阅")).toBeInTheDocument();
 		expect(within(officialCard).getByText("Codex 登录")).toBeInTheDocument();
-		expect(within(officialCard).getByText("当前渠道")).toBeInTheDocument();
+		expect(within(officialCard).getByText("默认供应商")).toBeInTheDocument();
 	});
 
 	it("switches from a relay to the official login when the official card is clicked", async () => {
@@ -306,7 +306,7 @@ describe("CodexRelayPanel", () => {
 				],
 			}),
 		);
-		expect(toastMock.success).toHaveBeenCalledWith("已切换第三方 API", {
+		expect(toastMock.success).toHaveBeenCalledWith("默认供应商已更新", {
 			description: "Relay 2",
 		});
 		expect(checkCodexRelaySettings).toHaveBeenCalledTimes(1);
@@ -484,6 +484,21 @@ describe("CodexRelayPanel", () => {
 		expect(vi.mocked(saveCodexRelaySettings).mock.invocationCallOrder[0]).toBeLessThan(
 			vi.mocked(saveCodexRelayProfileAPIKey).mock.invocationCallOrder[0],
 		);
+	});
+
+	it("applies the Tokease compatibility template without guessing a model", async () => {
+		vi.mocked(getCodexRelaySettings).mockResolvedValue(emptyResponse());
+
+		renderPanel();
+
+		fireEvent.click(await screen.findByRole("button", { name: "新增第三方 API" }));
+		const dialog = await screen.findByRole("dialog", { name: "新增第三方 API" });
+		fireEvent.click(within(dialog).getByRole("button", { name: "套用模板" }));
+
+		expect(within(dialog).getByLabelText("名称")).toHaveValue("Tokease");
+		expect(within(dialog).getByLabelText("Base URL")).toHaveValue("https://tokease.cn/v1");
+		expect(within(dialog).getByLabelText("Model ID")).toHaveValue("");
+		expect(within(dialog).getByLabelText("上游协议")).toHaveValue("chatCompletions");
 	});
 });
 

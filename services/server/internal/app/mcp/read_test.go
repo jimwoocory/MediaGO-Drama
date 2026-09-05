@@ -9,17 +9,19 @@ import (
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestLoadSkillReadsWorkspaceSettingsDB(t *testing.T) {
 	ctx := context.Background()
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	registry := newSkillRegistryForWorkspace(store)
 	settingsDBPath := store.SettingsDatabasePath()
 	repos, err := repository.OpenSettingsRepositories(settingsDBPath)
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	packStore := promptpack.NewServiceFromRepositoryWithPackFilesDir(
 		repos.Packs,
 		repos.PromptLibrary,
@@ -51,7 +53,7 @@ func TestLoadSkillReadsWorkspaceSettingsDB(t *testing.T) {
 
 func TestLoadSkillResolvesBuiltinImageGenerationAcrossPromptPack(t *testing.T) {
 	ctx := context.Background()
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	adapter := NewAdapter(store, nil)
 
 	output, err := adapter.LoadSkill(ctx, "", mediamcp.LoadSkillInput{Name: "image-generation"})
@@ -71,7 +73,7 @@ func TestLoadSkillResolvesBuiltinImageGenerationAcrossPromptPack(t *testing.T) {
 
 func TestLoadSkillResolvesBuiltinVideoGenerationAcrossPromptPack(t *testing.T) {
 	ctx := context.Background()
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	adapter := NewAdapter(store, nil)
 
 	output, err := adapter.LoadSkill(ctx, "", mediamcp.LoadSkillInput{Name: "video-generation"})

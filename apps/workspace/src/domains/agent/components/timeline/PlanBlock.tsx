@@ -3,15 +3,19 @@ import type React from "react";
 import type { AgentACPPlanEntry } from "@/domains/agent/stores";
 import { cn } from "@/shared/lib/utils";
 
-export const PlanBlock: React.FC<{ content: string; entries?: AgentACPPlanEntry[] }> = ({
-	content,
-	entries,
-}) => {
+export const PlanBlock: React.FC<{
+	content: string;
+	entries?: AgentACPPlanEntry[];
+	animateProgress?: boolean;
+}> = ({ content, entries, animateProgress = true }) => {
 	if (entries && entries.length > 0) {
 		return (
 			<ol className="agent-plan-list space-y-1 text-caption text-muted-foreground">
 				{entries.map((entry, index) => {
-					const Icon = planStatusIcon(entry.status);
+					const Icon =
+						entry.status === "in_progress" && !animateProgress
+							? Circle
+							: planStatusIcon(entry.status);
 					return (
 						<li
 							key={`${entry.content}-${index}`}
@@ -24,12 +28,17 @@ export const PlanBlock: React.FC<{ content: string; entries?: AgentACPPlanEntry[
 								className={cn(
 									"agent-plan-status-icon mt-0.5 size-3.5 shrink-0",
 									entry.status === "completed" && "text-success-foreground",
-									entry.status === "in_progress" && "animate-spin text-warning-foreground",
+									entry.status === "in_progress" &&
+										animateProgress &&
+										"animate-spin text-warning-foreground",
 									entry.status === "failed" && "text-error-foreground",
 								)}
 							/>
 							<span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
 								{entry.content}
+								{entry.status === "unconfirmed" ? (
+									<span className="ml-1 text-2xs text-muted-foreground">未确认</span>
+								) : null}
 								{entry.priority ? (
 									<span className="ml-1 text-2xs text-muted-foreground">{entry.priority}</span>
 								) : null}

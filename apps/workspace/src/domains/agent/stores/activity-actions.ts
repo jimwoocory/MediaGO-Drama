@@ -1,11 +1,11 @@
 import type { AgentActionContext, AgentActions } from "./action-types";
+import { capturePlanToolStates } from "../lib/plan-progress";
 import {
 	agentMessageId,
 	appendThoughtToConversation,
 	appendTraceForTarget,
 	createId,
 	findCurrentTurnPlanMessage,
-	nonTerminalConversationStatus,
 	normalizeAgentItemIdentity,
 	prependActivity,
 	resolveTargetRunId,
@@ -102,6 +102,10 @@ export const createAgentActivityActions = ({ set }: AgentActionContext): Activit
 						metadata: {
 							...existing?.metadata,
 							planEntries: entries,
+							planToolStates: capturePlanToolStates(
+								conversation.messages,
+								itemIdentity.turnId ?? targetRunId,
+							),
 						},
 					},
 					itemIdentity,
@@ -112,14 +116,12 @@ export const createAgentActivityActions = ({ set }: AgentActionContext): Activit
 					},
 				);
 				const messages = existing
-					? conversation.messages.map((message) =>
-							message.id === existing.id ? planMessage : message,
-						)
+					? conversation.messages.map((message) => (message === existing ? planMessage : message))
 					: [...conversation.messages, planMessage];
 				return {
 					...conversation,
 					messages,
-					status: nonTerminalConversationStatus(conversation.status),
+					status: conversation.status === "pending" ? "running" : conversation.status,
 					updatedAt: createdAt,
 				};
 			});

@@ -293,7 +293,7 @@ func newAgentRuntimeConfigInspector(api *apiHandler) httphandlers.AgentRuntimeCo
 			return agentRuntimeConfigResponse{}, err
 		}
 		config, inspectErr := inspector.InspectSessionConfig(ctx, projectID, projectDir)
-		coreModels, err := api.settings.ListConfiguredAgentCoreRuntimeModels(ctx)
+		coreModels, err := api.settings.ListAgentProviderRuntimeModels(ctx)
 		if err != nil {
 			return agentRuntimeConfigResponse{}, err
 		}
@@ -305,33 +305,57 @@ func newAgentRuntimeConfigInspector(api *apiHandler) httphandlers.AgentRuntimeCo
 			// not hide independently configured Agent Core providers.
 			config = agentRuntimeConfigResponse{}
 		}
+		if config.Model != nil {
+			for index := range config.Model.Options {
+				option := &config.Model.Options[index]
+				option.ProviderID = "chatgpt"
+				option.ProviderLabel = "Codex-GPT / ChatGPT OAuth"
+				option.ModelID = option.Value
+				option.Value = "chatgpt:" + option.Value
+			}
+			if config.Model.CurrentValue != "" {
+				config.Model.CurrentValue = "chatgpt:" + config.Model.CurrentValue
+			}
+		}
 		if len(coreModels) == 0 {
 			return config, nil
 		}
 		if config.Model == nil {
 			config.Model = &serviceagent.AgentRuntimeSelectConfig{
-				Name:    "模型",
-				Source:  "configuredProviders",
-				Options: []serviceagent.AgentRuntimeSelectOption{},
+				ConfigID: "model",
+				Name:     "模型",
+				Source:   "configuredProviders",
+				Options:  []serviceagent.AgentRuntimeSelectOption{},
 			}
 		}
 		seen := make(map[string]bool, len(config.Model.Options)+len(coreModels))
 		for _, option := range config.Model.Options {
-			seen[strings.ToLower(strings.TrimSpace(option.Value))] = true
+			seen[strings.TrimSpace(option.Value)] = true
 		}
 		for _, model := range coreModels {
-			key := strings.ToLower(strings.TrimSpace(model.Value))
+			key := strings.TrimSpace(model.Value)
 			if key == "" || seen[key] {
 				continue
 			}
 			seen[key] = true
 			config.Model.Options = append(config.Model.Options, serviceagent.AgentRuntimeSelectOption{
-				Value: strings.TrimSpace(model.Value),
-				Name:  strings.TrimSpace(model.Name),
+				Value:         strings.TrimSpace(model.Value),
+				Name:          strings.TrimSpace(model.Name),
+				ProviderID:    model.ProviderID,
+				ProviderLabel: model.ProviderLabel,
+				ModelID:       model.ModelID,
+				Description:   model.Description,
 			})
 		}
 		if strings.TrimSpace(config.Model.CurrentValue) == "" && len(config.Model.Options) > 0 {
 			config.Model.CurrentValue = config.Model.Options[0].Value
+		}
+		preferred := api.settings.DefaultAgentProviderModel()
+		for _, option := range config.Model.Options {
+			if preferred != "" && option.Value == preferred {
+				config.Model.CurrentValue = preferred
+				break
+			}
 		}
 		return config, nil
 	}

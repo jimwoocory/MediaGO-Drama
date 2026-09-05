@@ -415,6 +415,9 @@ func RequireGenerationRouteConfigured(route coregeneration.ModelRoute, configure
 	if configured {
 		return nil
 	}
+	if route.Provider == coregeneration.ProviderCodexImage {
+		return errors.New("Codex 订阅生图不可用，请在 Codex 接入检查 ChatGPT 登录与图片能力")
+	}
 	if route.Provider == coregeneration.ProviderJimeng {
 		return errors.New("即梦尚未登录，请先在设置的 API 密钥页完成即梦登录")
 	}

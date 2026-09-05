@@ -36,7 +36,7 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 	seedGenerationTaskProject(t, dbPath, projectID)
 	seedGenerationTaskAsset(t, dbPath, "video-task", "video", projectID)
 	seedGenerationTaskAsset(t, dbPath, "video-selected", "video", projectID)
-	taskStore := NewGenerationTaskService(dbPath, nil)
+	taskStore := newTestGenerationTaskService(t, dbPath, nil)
 	workflow := NewGenerationService(nil, taskStore, nil)
 	workflow.SetDocumentResolver(fakeStoryboardVideoDocumentResolver{
 		documents: []mediamcp.WorkspaceDocument{
@@ -160,7 +160,7 @@ func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-storyboard-video-duplicates"
 	seedGenerationTaskProject(t, dbPath, projectID)
-	taskStore := NewGenerationTaskService(dbPath, nil)
+	taskStore := newTestGenerationTaskService(t, dbPath, nil)
 	workflow := NewGenerationService(nil, taskStore, nil)
 	workflow.SetDocumentResolver(fakeStoryboardVideoDocumentResolver{
 		documents: []mediamcp.WorkspaceDocument{
@@ -269,7 +269,7 @@ func TestGenerationServiceListStoryboardVideoResourcesGeneratedVideoCount(t *tes
 	}
 	seedGenerationTaskAsset(t, dbPath, "gen-running", "video", projectID)
 	seedGenerationTaskAsset(t, dbPath, "gen-image", "image", projectID)
-	taskStore := NewGenerationTaskService(dbPath, nil)
+	taskStore := newTestGenerationTaskService(t, dbPath, nil)
 	workflow := NewGenerationService(nil, taskStore, nil)
 	workflow.SetDocumentResolver(fakeStoryboardVideoDocumentResolver{
 		documents: []mediamcp.WorkspaceDocument{

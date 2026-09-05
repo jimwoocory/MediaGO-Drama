@@ -4,6 +4,7 @@ import "strings"
 
 const apiKeyBalanceInsufficientMessage = "当前 API Key 余额不足，请充值后重试。"
 const apiKeyInvalidMessage = "当前模型调用的 API Key 无效或已失效，请在对应设置页更新后重试。"
+const providerRateLimitMessage = "第三方模型服务返回 429（请求过多或额度限制），本轮未完成。请稍后重试，并检查供应商的限流或额度；已保存的文档保持不变。"
 const codexRelayAPIKeyInvalidMessage = "Codex 中转 API Key 无效或已失效，请在「设置 > Codex 中转」更新后重试。"
 
 type friendlyACPProviderError struct {
@@ -54,6 +55,8 @@ func friendlyACPProviderErrorFor(raw string) friendlyACPProviderError {
 			message: apiKeyBalanceInsufficientMessage,
 			reason:  "api_key_balance_insufficient",
 		}
+	case normalized == strings.ToLower(providerRateLimitMessage), strings.Contains(normalized, "429 too many requests"), strings.Contains(normalized, "rate_limit_exceeded"):
+		return friendlyACPProviderError{message: providerRateLimitMessage, reason: "provider_rate_limited"}
 	default:
 		return friendlyACPProviderError{}
 	}

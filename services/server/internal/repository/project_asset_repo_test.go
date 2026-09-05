@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestProjectAssetRepositoryLifecycle(t *testing.T) {
@@ -13,6 +14,7 @@ func TestProjectAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewProjectAssetRepository() error = %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 	seedRepositoryProject(t, repo.db, "project-a")
 	seedRepositoryProject(t, repo.db, "project-b")
 

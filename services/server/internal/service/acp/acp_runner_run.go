@@ -381,13 +381,6 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 		promptStartedAt = time.Now()
 		promptResponse, err = promptACPSession(ctx, conn, client, promptRequest, invalidateCancelledProcess)
 	}
-	if err != nil && client.toolLoopGuardReason() != "" {
-		reason := client.toolLoopGuardReason()
-		acpLog().Warn("acp tool loop guard forced finalization", append(logArgs, "acp_session_id", sessionID, "reason", reason)...)
-		publish(agentEvent{Type: "agent.activity", Message: "工具调用已停止，正在安全收尾：" + reason})
-		err = nil
-		promptResponse = acp.PromptResponse{StopReason: acp.StopReasonEndTurn}
-	}
 	if err != nil {
 		acpLog().Error("acp prompt failed", append(logArgs, "acp_session_id", sessionID, "duration_ms", time.Since(promptStartedAt).Milliseconds(), "error", err)...)
 		if alert := runtimeAlertForACPPromptError(err, ctx.Err()); alert != nil {
@@ -411,7 +404,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	}
 	requestedFinalMessage := false
 	hadActivityBeforeFinalMessage := false
-	if client.toolLoopGuardReason() == "" && shouldRequestACPFinalMessage(promptResponse, client.messageItemText(), client.runtimeErrorText(), client.hasPromptActivity()) {
+	if shouldRequestACPFinalMessage(promptResponse, client.messageItemText(), client.runtimeErrorText(), client.hasPromptActivity()) {
 		requestedFinalMessage = true
 		hadActivityBeforeFinalMessage = true
 		publish(agentEvent{
@@ -467,13 +460,7 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	rawFinalMessage := client.messageText()
 	rawFinalItem := client.messageItemText()
 	final := parseACPFinalResponseForItem(rawFinalMessage, rawFinalItem, request)
-	if reason := client.toolLoopGuardReason(); reason != "" {
-		if strings.TrimSpace(final.Message) == "" {
-			final.Message = "已达到工具调用安全上限，已停止继续调用工具并安全结束本轮。"
-		}
-		final.Message = strings.TrimSpace(final.Message) + "\n\n（安全保护：" + reason + "）"
-	}
-	if strings.TrimSpace(rawFinalItem) == "" && client.toolLoopGuardReason() == "" {
+	if strings.TrimSpace(rawFinalItem) == "" {
 		if runtimeError := client.runtimeErrorText(); runtimeError != "" {
 			final.Message = runtimeError
 		} else if fallback := fallbackACPFinalMessage(request, requestedFinalMessage || hadActivityBeforeFinalMessage); fallback != "" {
@@ -523,13 +510,23 @@ func promptACPSession(
 	onCancellationTimeout func(),
 ) (acp.PromptResponse, error) {
 	client.resetMessage()
+	promptCtx, cancelPrompt := context.WithCancelCause(ctx)
+	client.mu.Lock()
+	client.promptCancel = cancelPrompt
+	client.mu.Unlock()
+	defer func() {
+		client.mu.Lock()
+		client.promptCancel = nil
+		client.mu.Unlock()
+		cancelPrompt(nil)
+	}()
 	client.beginPromptMetrics()
 	client.setAcceptingSessionUpdates(true)
 	promptDone := make(chan struct{})
-	if onCancellationTimeout != nil && ctx.Done() != nil {
+	if onCancellationTimeout != nil {
 		go func() {
 			select {
-			case <-ctx.Done():
+			case <-promptCtx.Done():
 				timer := time.NewTimer(residentACPCancelGracePeriod)
 				defer timer.Stop()
 				select {
@@ -541,12 +538,14 @@ func promptACPSession(
 			}
 		}()
 	}
-	response, err := conn.Prompt(ctx, request)
+	response, err := conn.Prompt(promptCtx, request)
 	close(promptDone)
 	client.setAcceptingSessionUpdates(false)
 	client.finishThoughts()
-	if err == nil && ctx.Err() != nil {
-		err = ctx.Err()
+	if cause := context.Cause(promptCtx); cause != nil {
+		err = cause
+	} else if err == nil {
+		err = nativeACPFinalError(client.messageItemText())
 	}
 	return response, err
 }

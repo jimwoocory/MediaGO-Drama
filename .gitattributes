@@ -1,0 +1,5 @@
+* text=auto
+
+# Match gofmt and the workspace EditorConfig on every checkout, including Windows.
+*.go text eol=lf
+/apps/workspace/** text=auto eol=lf

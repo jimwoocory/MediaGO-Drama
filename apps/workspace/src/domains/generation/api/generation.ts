@@ -230,7 +230,9 @@ const generationRequestTimeoutMs = 1_000_000;
 const generationPollTimeoutMs = 45_000;
 
 export const getGenerationModels = async () => {
-	const response = await httpClient.get<GenerationModelsResponse>(generationModelsKey);
+	const response = await httpClient.get<GenerationModelsResponse>(generationModelsKey, {
+		timeout: 45000,
+	});
 	return response.data;
 };
 

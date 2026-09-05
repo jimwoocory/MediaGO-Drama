@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 	"gorm.io/gorm"
 )
 
@@ -13,6 +14,7 @@ func TestBillingRepositoryListUsageBucketsAggregatesTokenColumns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	ensureBillingProjectFixture(t, repos.DB, "project-a")
 	ensureBillingProjectFixture(t, repos.DB, "project-b")
 

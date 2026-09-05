@@ -15,6 +15,7 @@ import (
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 type deniedPromptPackImporter struct{}
@@ -565,14 +566,6 @@ func newPromptPackHandlerTestStore(t *testing.T) *promptpack.Service {
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories() error = %v", err)
 	}
-	sqlDB, err := repositories.DB.DB()
-	if err != nil {
-		t.Fatalf("DB() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := sqlDB.Close(); err != nil {
-			t.Errorf("Close() error = %v", err)
-		}
-	})
+	testutil.CloseDB(t, repositories.DB)
 	return promptpack.NewServiceFromRepository(repositories.Packs, repositories.PromptLibrary, nil)
 }

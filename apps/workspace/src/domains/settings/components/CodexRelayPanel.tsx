@@ -72,7 +72,7 @@ interface CodexRelayPanelProps {
 }
 
 export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
-	description = "统一配置第三方 OpenAI-compatible Agent API；Auto 会根据能力检测结果选择 Responses 或 Chat Completions。",
+	description = "ChatGPT OAuth 与各第三方供应商可同时使用；在对话模型菜单中选择供应商和模型。此处设置新对话的默认供应商。",
 	embedded = false,
 	officialChannel,
 	title = "第三方 Agent API",
@@ -129,7 +129,7 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 			settingsSaved = true;
 			await mutate(nextData, false);
 			if (nextEnabled) await checkCodexRelaySettings({ profileId: nextActiveProfileID });
-			toast.success(nextEnabled ? "Codex 路由已开启" : "已切换到 ChatGPT 官方订阅");
+			toast.success(nextEnabled ? "默认供应商已设为第三方 API" : "默认供应商已设为 ChatGPT OAuth");
 		} catch (err) {
 			setEnabled(previousEnabled);
 			if (settingsSaved) {
@@ -174,7 +174,7 @@ export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
 			settingsSaved = true;
 			await mutate(nextData, false);
 			await checkCodexRelaySettings({ profileId: profile.id });
-			toast.success("已切换第三方 API", { description: profile.name });
+			toast.success("默认供应商已更新", { description: profile.name });
 		} catch (err) {
 			setEnabled(previousEnabled);
 			setActiveProfileID(previousActiveID);
@@ -507,7 +507,7 @@ const OfficialChannelCard: React.FC<{
 						onClick={channel.onLogout}
 					>
 						<LogOut />
-						退出 MediaGo Codex
+						退出 JW Drama Codex
 					</Button>
 				) : channel.status === "loggedOut" ? (
 					<Button type="button" size="sm" disabled={channel.busy} onClick={channel.onLogin}>
@@ -630,7 +630,7 @@ const ChannelTypeBadge: React.FC<{ children: React.ReactNode }> = ({ children })
 
 const CurrentChannelBadge = () => (
 	<span className="shrink-0 rounded-control border border-success-border bg-success-surface px-2 py-0.5 text-[11px] font-medium text-success-foreground">
-		当前渠道
+		默认供应商
 	</span>
 );
 
@@ -677,7 +677,7 @@ const HeaderEnableSwitch: React.FC<{
 		/>
 		{busy ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
 		<span className={checked ? "text-foreground" : undefined}>
-			{checked ? "路由已开启" : "路由未开启"}
+			{checked ? "默认：第三方 API" : "默认：ChatGPT OAuth"}
 		</span>
 	</div>
 );
@@ -733,6 +733,32 @@ const RelayProfileEditDialog: React.FC<{
 
 				{draft ? (
 					<div className="mt-5 grid gap-4">
+						<div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 p-3">
+							<div className="min-w-0">
+								<p className="text-xs font-medium text-foreground">Tokease / NewAPI 兼容模板</p>
+								<p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+									使用 Chat Completions 适配，避免中转站 Responses
+									实现不完整；如控制台给出的地址不同，请再替换 Base URL。
+								</p>
+							</div>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								className="shrink-0 rounded-md"
+								onClick={() =>
+									onDraftChange({
+										...draft,
+										name: "Tokease",
+										baseURL: "https://tokease.cn/v1",
+										protocol: "chatCompletions",
+										detectedProtocol: undefined,
+									})
+								}
+							>
+								套用模板
+							</Button>
+						</div>
 						<label>
 							<span className="mb-2 block text-xs text-muted-foreground">名称</span>
 							<Input
@@ -774,6 +800,7 @@ const RelayProfileEditDialog: React.FC<{
 						<label>
 							<span className="mb-2 block text-xs text-muted-foreground">上游协议</span>
 							<select
+								aria-label="上游协议"
 								value={draft.protocol}
 								onChange={(event) =>
 									onDraftChange({

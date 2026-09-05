@@ -12,6 +12,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestStoreSeedsBuiltinPromptEntries(t *testing.T) {
@@ -176,6 +177,7 @@ func TestStoreBrowsableIndexOmitsBodiesAndRejectsImportedDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	packStore := promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, nil)
 	store := NewServiceFromPromptPack(packStore, nil)
 	if _, err := store.List(ctx, Filter{}); err != nil {
@@ -225,6 +227,7 @@ func newTestStore(t *testing.T) *Service {
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	packStore := promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, nil)
 	return NewServiceFromPromptPack(packStore, nil)
 }

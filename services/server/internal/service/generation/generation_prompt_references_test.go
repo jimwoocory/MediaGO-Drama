@@ -14,13 +14,12 @@ import (
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 )
 
 func TestProviderPromptForGenerationRewritesReferenceNamesByAssetOrder(t *testing.T) {
-	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	mediaAssets := newTestMediaAssets(t, filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
 	roleAsset := saveNamedPNGReferenceAsset(t, mediaAssets, "沈言角色.png")
 	styleAsset := saveNamedPNGReferenceAsset(t, mediaAssets, "宿舍风格.png")
 	workflow := NewGenerationService(nil, nil, mediaAssets)
@@ -40,7 +39,7 @@ func TestProviderPromptForGenerationRewritesReferenceNamesByAssetOrder(t *testin
 }
 
 func TestProviderPromptForGenerationRewritesDocumentMentions(t *testing.T) {
-	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	mediaAssets := newTestMediaAssets(t, filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
 	asset := saveNamedPNGReferenceAsset(t, mediaAssets, "reference.png")
 	workflow := NewGenerationService(nil, nil, mediaAssets)
 	workflow.SetDocumentResolver(fakeGenerationDocumentResolver{
@@ -73,7 +72,7 @@ func TestProviderPromptForGenerationRewritesDocumentMentions(t *testing.T) {
 }
 
 func TestProviderPromptForGenerationRewritesBoundSelectedAssetMentions(t *testing.T) {
-	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	mediaAssets := newTestMediaAssets(t, filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
 	asset := saveNamedPNGReferenceAsset(t, mediaAssets, "顾依依定稿.png")
 	audioAsset, err := mediaAssets.SaveBase64(
 		media.MediaKindAudio,
@@ -139,7 +138,7 @@ func TestProviderPromptForGenerationNumbersSlotsByReferenceKind(t *testing.T) {
 
 func TestCreateVideoGenerationKeepsStoredPromptAndRewritesProviderPrompt(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
-	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	repo, err := newTestGenerationTaskRepository(t, dbPath)
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
@@ -149,7 +148,7 @@ func TestCreateVideoGenerationKeepsStoredPromptAndRewritesProviderPrompt(t *test
 			coregeneration.ProviderDMX: "sk-video",
 		},
 	})
-	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
+	mediaAssets := newTestMediaAssets(t, dbPath, t.TempDir())
 	asset := saveNamedPNGReferenceAsset(t, mediaAssets, "沈言角色.png")
 	provider := &blockingVideoGenerateProvider{
 		started:  make(chan struct{}),

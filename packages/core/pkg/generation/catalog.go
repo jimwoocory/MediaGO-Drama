@@ -61,6 +61,9 @@ func Models() []ModelSpec {
 
 // FindModel returns one legacy model spec by UI-facing model id.
 func FindModel(id string) (ModelSpec, bool) {
+	if route, ok := findDiscoveredRoute(id); ok {
+		return ModelSpec{ID: route.ID, Label: route.Model, Kind: route.Kind, Provider: route.Provider, Model: route.Model, Adapter: route.Adapter, Async: route.Async, SupportsReferenceURLs: route.SupportsReferenceURLs, Params: route.Params}, true
+	}
 	model, ok := modelCatalog().modelsByID[id]
 	if !ok {
 		return ModelSpec{}, false
@@ -71,6 +74,12 @@ func FindModel(id string) (ModelSpec, bool) {
 
 // FindRoute returns one route by route id.
 func FindRoute(id string) (ModelRoute, bool) {
+	if id == CodexImageRoute().ID {
+		return CodexImageRoute(), true
+	}
+	if route, ok := findUnifiedRoute(id); ok {
+		return route, true
+	}
 	route, ok := routeCatalog().routesByID[id]
 	if !ok {
 		return ModelRoute{}, false
@@ -81,6 +90,12 @@ func FindRoute(id string) (ModelRoute, bool) {
 
 // FindRouteByLegacyModelID returns the preferred route for a legacy model id.
 func FindRouteByLegacyModelID(id string) (ModelRoute, bool) {
+	if id == CodexImageRoute().ID {
+		return CodexImageRoute(), true
+	}
+	if route, ok := findUnifiedRoute(id); ok {
+		return route, true
+	}
 	route, ok := routeCatalog().routesByLegacyModelID[id]
 	if !ok {
 		return ModelRoute{}, false

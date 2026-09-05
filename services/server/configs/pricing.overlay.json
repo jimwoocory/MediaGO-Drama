@@ -1,6 +1,16 @@
 {
   "prices": [
     {
+      "routeId": "videoapi.compatible",
+      "currency": "USD",
+      "unit": "external"
+    },
+    {
+      "routeId": "speechapi.compatible",
+      "currency": "USD",
+      "unit": "external"
+    },
+    {
       "routeId": "dmx.seedream-5-lite",
       "currency": "CNY",
       "unit": "per_call",

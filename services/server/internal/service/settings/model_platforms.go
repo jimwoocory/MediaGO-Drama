@@ -16,7 +16,7 @@ const (
 	ModelPlatformOpenRouter = generation.ProviderOpenRouter
 	// ModelPlatformDMXAPI is the DMXAPI aggregation platform.
 	ModelPlatformDMXAPI = "dmxapi"
-	// ModelPlatformAIHubMix is the AIHubMix OpenAI-compatible aggregation platform.
+	// ModelPlatformAIHubMix is the legacy ID for the configurable OpenAI-compatible platform.
 	ModelPlatformAIHubMix = agentModelProviderAIHubMix
 	// ModelPlatformJimeng is the local Dreamina/Jimeng CLI platform.
 	ModelPlatformJimeng = generation.ProviderJimeng
@@ -84,9 +84,9 @@ func modelPlatformSpecs() []modelPlatformSpec {
 		},
 		{
 			ID:               ModelPlatformAIHubMix,
-			Label:            "AIHubMix",
+			Label:            "OpenAI-compatible",
 			Kind:             "custom",
-			Description:      "AIHubMix OpenAI-compatible 聚合接口",
+			Description:      "可配置的 OpenAI-compatible 聚合接口",
 			APIKeyProviderID: agentModelProviderAIHubMix,
 		},
 		{
@@ -141,19 +141,22 @@ func (service *Settings) MediagoBaseURL() string {
 
 const (
 	aihubmixBaseURLSettingKey = "agent.aihubmix.base_url"
-	defaultAIHubMixBaseURL    = "https://aihubmix.com/v1"
+	// defaultAIHubMixBaseURL is used only to migrate existing installs that
+	// already saved an AIHubMix key before the endpoint became provider-neutral.
+	defaultAIHubMixBaseURL = "https://aihubmix.com/v1"
 )
 
-// AIHubMixSettings stores the editable AIHubMix OpenAI-compatible endpoint.
+// AIHubMixSettings stores the editable OpenAI-compatible endpoint.
+// The legacy name is retained so older desktop clients remain API-compatible.
 type AIHubMixSettings struct {
 	BaseURL string `json:"baseURL"`
 }
 
-// GetAIHubMixSettings returns the persisted AIHubMix endpoint, falling back to the official default.
+// GetAIHubMixSettings returns the persisted OpenAI-compatible endpoint.
 func (service *Settings) GetAIHubMixSettings(ctx context.Context) (AIHubMixSettings, error) {
 	_ = ctx
 	if service == nil || service.appSettings == nil {
-		return AIHubMixSettings{BaseURL: defaultAIHubMixBaseURL}, nil
+		return AIHubMixSettings{}, nil
 	}
 	value, _, err := service.appSettings.GetAppSetting(aihubmixBaseURLSettingKey)
 	if err != nil {
@@ -161,12 +164,16 @@ func (service *Settings) GetAIHubMixSettings(ctx context.Context) (AIHubMixSetti
 	}
 	value = strings.TrimRight(strings.TrimSpace(value), "/")
 	if value == "" {
-		value = defaultAIHubMixBaseURL
+		value = service.legacyAIHubMixDefaultBaseURL()
+	} else if normalized, normalizeErr := normalizeOpenAICompatibleBaseURL(value); normalizeErr == nil {
+		// Normalize on read as well so existing portable installs immediately
+		// benefit from compatibility corrections without re-entering their key.
+		value = normalized
 	}
 	return AIHubMixSettings{BaseURL: value}, nil
 }
 
-// SetAIHubMixSettings validates and persists the AIHubMix endpoint.
+// SetAIHubMixSettings validates and persists the OpenAI-compatible endpoint.
 func (service *Settings) SetAIHubMixSettings(ctx context.Context, input AIHubMixSettings) (AIHubMixSettings, error) {
 	_ = ctx
 	if service == nil || service.appSettings == nil {
@@ -182,13 +189,24 @@ func (service *Settings) SetAIHubMixSettings(ctx context.Context, input AIHubMix
 	return AIHubMixSettings{BaseURL: baseURL}, nil
 }
 
-// AIHubMixBaseURL returns the endpoint used by MediaGo Agent Core at runtime.
+// AIHubMixBaseURL returns the OpenAI-compatible endpoint used by MediaGo Agent Core at runtime.
 func (service *Settings) AIHubMixBaseURL() string {
 	settings, err := service.GetAIHubMixSettings(context.Background())
-	if err != nil || strings.TrimSpace(settings.BaseURL) == "" {
-		return defaultAIHubMixBaseURL
+	if err != nil {
+		return service.legacyAIHubMixDefaultBaseURL()
 	}
 	return strings.TrimRight(strings.TrimSpace(settings.BaseURL), "/")
+}
+
+func (service *Settings) legacyAIHubMixDefaultBaseURL() string {
+	if service == nil || service.apiKeys == nil {
+		return ""
+	}
+	apiKey, _, err := service.apiKeys.Get(agentModelProviderAIHubMix)
+	if err == nil && strings.TrimSpace(apiKey) != "" {
+		return defaultAIHubMixBaseURL
+	}
+	return ""
 }
 
 func normalizeOpenAICompatibleBaseURL(value string) (string, error) {
@@ -202,6 +220,9 @@ func normalizeOpenAICompatibleBaseURL(value string) (string, error) {
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", fmt.Errorf("Base URL must not include credentials, query parameters, or fragments")
+	}
+	if strings.HasSuffix(strings.ToLower(strings.TrimRight(parsed.Path, "/")), "/vl") {
+		return "", fmt.Errorf("Base URL path ends with /vl (letter l); use /v1 (number 1)")
 	}
 	parsed.Path = normalizeOpenAICompatibleBasePath(parsed.Path)
 	parsed.RawPath = ""

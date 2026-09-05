@@ -11,6 +11,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestProjectAssetFolderPathByIDUsesFilesystemFolderIDs(t *testing.T) {
@@ -31,6 +32,7 @@ func TestProjectAssetsSaveListUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	requireProjectAssetTestProject(t, repos.Workspace, "project-a")
 	requireProjectAssetTestProject(t, repos.Workspace, "project-b")
 	store := NewProjectAssetsFromRepository(
@@ -139,6 +141,7 @@ func TestProjectAssetsSaveReaderStoresOriginalBasename(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	requireProjectAssetTestProject(t, repos.Workspace, "project-original-name")
 	store := NewProjectAssetsFromRepository(
 		repos.ProjectAssets,
@@ -194,6 +197,7 @@ func TestProjectAssetsSaveReaderUsesPersistedProjectDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	projectDir := filepath.Join(t.TempDir(), "custom-project")
 	now := timestamp.NowRFC3339Nano()
 	if err := repos.Workspace.UpsertProject(domain.WorkspaceProjectModel{
@@ -242,6 +246,7 @@ func TestProjectAssetsListImportsLocalWorkFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	projectDir := requireProjectAssetTestProject(t, repos.Workspace, "project-local-work-assets")
 	workDir := filepath.Join(projectDir, "work")
 	if err := os.MkdirAll(filepath.Join(workDir, "参考"), 0o755); err != nil {
@@ -284,6 +289,7 @@ func TestProjectAssetsUpdateFolderMovesLocalWorkFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	projectDir := requireProjectAssetTestProject(t, repos.Workspace, "project-move-asset")
 	if err := os.MkdirAll(filepath.Join(projectDir, "work", "参考"), 0o755); err != nil {
 		t.Fatalf("creating work folder: %v", err)
@@ -361,6 +367,7 @@ func TestProjectAssetsListPrunesMissingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	requireProjectAssetTestProject(t, repos.Workspace, "project-prune")
 	store := NewProjectAssetsFromRepository(
 		repos.ProjectAssets,
@@ -403,6 +410,7 @@ func TestProjectAssetsSaveReaderInDirUsesRegisteredProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	requireProjectAssetTestProject(t, repos.Workspace, "studio-novel-chunk")
 	targetDir := filepath.Join(t.TempDir(), "toolbox", "novel-chunk", "2026-06", "run-1")
 	store := NewProjectAssetsFromRepository(

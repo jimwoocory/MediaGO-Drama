@@ -148,6 +148,8 @@ func registerSettingsRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	)
 	apiRoutes.GET("/settings/model-platforms", handlers.Settings.HandleModelPlatforms)
 	apiRoutes.GET("/settings/aihubmix", handlers.Settings.HandleAIHubMixSettings)
+	apiRoutes.GET("/settings/unified-models", handlers.Settings.HandleUnifiedModels)
+	apiRoutes.PUT("/settings/unified-models", handlers.Settings.HandlePutUnifiedModel)
 	apiRoutes.PUT("/settings/aihubmix", handlers.Settings.HandlePutAIHubMixSettings)
 	apiRoutes.GET("/settings/speech-api", handlers.Settings.HandleSpeechAPISettings)
 	apiRoutes.PUT("/settings/speech-api", handlers.Settings.HandlePutSpeechAPISettings)

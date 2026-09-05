@@ -14,6 +14,20 @@ func (table stubTable) Find(routeID string) (RoutePrice, bool) {
 	return price, ok
 }
 
+func TestGenericExternalRoutesDoNotInventPrices(t *testing.T) {
+	for _, routeID := range []string{coregeneration.RouteVideoAPICompatible, coregeneration.RouteSpeechAPICompatible} {
+		t.Run(routeID, func(t *testing.T) {
+			price, found := Default().Find(routeID)
+			if !found || price.Unit != UnitExternal {
+				t.Fatalf("generic route price = %#v, found %v; want external billing", price, found)
+			}
+			if cost, estimated := EstimateCost(Default(), routeID, Usage{Calls: 1}); estimated {
+				t.Fatalf("unknown provider price must not produce an estimate: %#v", cost)
+			}
+		})
+	}
+}
+
 func TestOverlayJSONMergesPrices(t *testing.T) {
 	base := NewTable([]RoutePrice{
 		{

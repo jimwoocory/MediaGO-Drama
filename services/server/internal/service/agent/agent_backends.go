@@ -246,7 +246,7 @@ func builtinAgentBackends() []AgentBackend {
 			ID:          "opencode",
 			Name:        "MediaGo Agent Core",
 			Command:     "opencode acp",
-			Description: "AIHubMix 等兼容模型使用 Agent Core；DeepSeek 经独立 Harness Adapter 路径接入。",
+			Description: "OpenAI-compatible 模型使用 Agent Core；DeepSeek 经独立 Harness Adapter 路径接入。",
 			IsBuiltin:   true,
 		},
 	}

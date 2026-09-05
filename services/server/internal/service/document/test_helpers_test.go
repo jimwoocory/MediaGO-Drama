@@ -8,11 +8,21 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
 
-func newWorkspaceStateService(workspaceDir string) *Service {
+func newWorkspaceStateService(t *testing.T, workspaceDir string) *Service {
+	t.Helper()
 	db, err := repository.OpenWorkspaceDB(filepath.Join(workspaceDir, "workspace.db"))
 	if err != nil {
 		return NewService(workspaceDir, nil, nil, err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("accessing test database: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Errorf("closing test database: %v", err)
+		}
+	})
 	store := NewService(workspaceDir, repository.NewWorkspaceRepository(db), nil, nil, repository.NewDocumentSectionRepositoryFromDB(db))
 	store.SetProjectAssetRepository(repository.NewProjectAssetRepositoryFromDB(db))
 	store.SetEditStreamService(NewEditStreamService(repository.NewDocumentEditStreamRepository(db), nil))
@@ -21,7 +31,7 @@ func newWorkspaceStateService(workspaceDir string) *Service {
 
 func requireDocumentStore(t *testing.T) *Service {
 	t.Helper()
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing document store: %v", store.initErr)
 	}

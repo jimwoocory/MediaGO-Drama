@@ -10,6 +10,7 @@ const planMessage = (
 	id = "plan-1",
 ): AgentMessage => ({
 	id,
+	turnId: "run-1",
 	role: "assistant",
 	kind: "plan",
 	content: entries?.map((entry) => entry.content).join("\n") ?? "",
@@ -28,20 +29,23 @@ describe("AgentLivePlan", () => {
 			"latest-plan",
 		);
 
-		expect(activePlanFromMessages([first, latest])).toMatchObject({
+		expect(activePlanFromMessages([first, latest], "run-1")).toMatchObject({
 			currentStep: 2,
 			entries: latest.metadata?.planEntries,
 		});
 	});
 
 	it("uses the first pending step when the runtime has not marked one in progress", () => {
-		const plan = activePlanFromMessages([
-			planMessage([
-				{ content: "读取素材", status: "completed" },
-				{ content: "生成分镜", status: "pending" },
-				{ content: "检查结果", status: "pending" },
-			]),
-		]);
+		const plan = activePlanFromMessages(
+			[
+				planMessage([
+					{ content: "读取素材", status: "completed" },
+					{ content: "生成分镜", status: "pending" },
+					{ content: "检查结果", status: "pending" },
+				]),
+			],
+			"run-1",
+		);
 
 		expect(plan?.currentStep).toBe(2);
 	});
@@ -49,6 +53,7 @@ describe("AgentLivePlan", () => {
 	it("renders an expanded card and toggles it from the progress pill", () => {
 		render(
 			<AgentLivePlan
+				runId="run-1"
 				isRunning
 				messages={[
 					planMessage([
@@ -78,6 +83,7 @@ describe("AgentLivePlan", () => {
 	it("does not render without an active structured plan", () => {
 		const { rerender } = render(
 			<AgentLivePlan
+				runId="run-1"
 				isRunning={false}
 				messages={[planMessage([{ content: "完成", status: "completed" }])!]}
 			/>,
@@ -86,6 +92,7 @@ describe("AgentLivePlan", () => {
 
 		rerender(
 			<AgentLivePlan
+				runId="run-1"
 				isRunning
 				messages={[{ id: "note", role: "assistant", kind: "message", content: "处理中" }]}
 			/>,
@@ -96,6 +103,7 @@ describe("AgentLivePlan", () => {
 	it("shows a failed step with the error status treatment", () => {
 		const { container } = render(
 			<AgentLivePlan
+				runId="run-1"
 				isRunning
 				messages={[
 					planMessage([

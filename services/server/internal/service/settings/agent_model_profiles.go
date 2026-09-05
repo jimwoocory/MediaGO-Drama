@@ -27,15 +27,17 @@ import (
 type domainAgentModelProfile = domain.AgentModelProfileModel
 
 const (
-	opencodeConfigSchema       = "https://opencode.ai/config.json"
-	agentModelKeyPrefix        = "agent-model:"
-	agentModelKeySuffix        = ":api-key"
-	agentModelProviderMediago  = coregeneration.ProviderMediago
-	agentModelProviderDMXAPI   = ModelPlatformDMXAPI
-	agentModelProviderDeepSeek = "deepseek"
+	opencodeConfigSchema         = "https://opencode.ai/config.json"
+	agentModelKeyPrefix          = "agent-model:"
+	agentModelKeySuffix          = ":api-key"
+	agentModelProviderMediago    = coregeneration.ProviderMediago
+	agentModelProviderDMXAPI     = ModelPlatformDMXAPI
+	agentModelProviderDeepSeek   = "deepseek"
+	agentModelProviderCompatible = "openai-compatible"
+	// agentModelProviderAIHubMix remains the credential/settings key for backwards compatibility.
 	agentModelProviderAIHubMix = "aihubmix"
 	mediagoModelListTimeout    = 5 * time.Second
-	openAIModelListTimeout     = 5 * time.Second
+	openAIModelListTimeout     = 15 * time.Second
 )
 
 var (
@@ -406,6 +408,10 @@ func (service *Settings) PrepareOpenCodeRuntimeConfigForModelAndInstructions(
 }
 
 func (service *Settings) officialAgentRuntimeProfiles(ctx context.Context) ([]domainAgentModelProfile, map[string]string, error) {
+	return service.officialAgentRuntimeProfilesExcept(ctx, "")
+}
+
+func (service *Settings) officialAgentRuntimeProfilesExcept(ctx context.Context, excludedProvider string) ([]domainAgentModelProfile, map[string]string, error) {
 	env := map[string]string{}
 	if service == nil || service.apiKeys == nil {
 		return nil, env, nil
@@ -413,6 +419,9 @@ func (service *Settings) officialAgentRuntimeProfiles(ctx context.Context) ([]do
 
 	profiles := []domainAgentModelProfile{}
 	for _, spec := range service.officialAgentRuntimeProfileSpecs() {
+		if spec.ProviderID == excludedProvider {
+			continue
+		}
 		if spec.PlatformID != "" && !service.modelPlatformEnabled(spec.PlatformID) {
 			continue
 		}
@@ -611,13 +620,13 @@ func AgentModelProfileTemplates() []AgentModelProfileTemplate {
 			Temperature:      &zero,
 		},
 		{
-			ID:               "aihubmix",
-			Name:             "AIHubMix",
-			ProviderID:       agentModelProviderAIHubMix,
-			ProviderLabel:    "AIHubMix",
-			BaseURL:          "https://aihubmix.com/v1",
-			Model:            "gpt-4.1-mini",
-			ModelDisplayName: "GPT-4.1 Mini",
+			ID:               "openai-compatible",
+			Name:             "OpenAI-compatible",
+			ProviderID:       agentModelProviderCompatible,
+			ProviderLabel:    "OpenAI-compatible",
+			BaseURL:          "https://api.example.com/v1",
+			Model:            "your-model-id",
+			ModelDisplayName: "自定义模型",
 			SupportsTools:    true,
 			Temperature:      &zero,
 		},
@@ -735,8 +744,8 @@ func (service *Settings) officialAgentRuntimeProfileSpecs() []officialAgentModel
 			Temperature:       &zero,
 		},
 		{
-			ProviderID:        agentModelProviderAIHubMix,
-			ProviderLabel:     "AIHubMix",
+			ProviderID:        agentModelProviderCompatible,
+			ProviderLabel:     "OpenAI-compatible",
 			BaseURL:           service.AIHubMixBaseURL(),
 			CredentialKeyName: agentModelProviderAIHubMix,
 			RouteProvider:     coregeneration.ProviderOpenAI,
@@ -788,7 +797,7 @@ func (service *Settings) agentRuntimeProfilesForSpec(ctx context.Context, spec o
 		}
 		return profiles, nil
 	}
-	if spec.ProviderID == agentModelProviderAIHubMix && strings.TrimSpace(apiKey) != "" {
+	if spec.CredentialKeyName == agentModelProviderAIHubMix && strings.TrimSpace(apiKey) != "" {
 		profiles, err := openAICompatibleAgentRuntimeProfiles(ctx, spec, apiKey)
 		if err != nil {
 			return nil, nil
@@ -803,7 +812,36 @@ type openAIModelListResponse struct {
 }
 
 type openAIModelListItem struct {
-	ID string `json:"id"`
+	Metadata      json.RawMessage    `json:"-"`
+	ID            string             `json:"id"`
+	ContextLength modelContextTokens `json:"context_length,omitempty"`
+	ContextWindow modelContextTokens `json:"context_window,omitempty"`
+}
+
+func (item *openAIModelListItem) UnmarshalJSON(raw []byte) error {
+	type plain openAIModelListItem
+	var value plain
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	*item = openAIModelListItem(value)
+	item.Metadata = append(json.RawMessage(nil), raw...)
+	return nil
+}
+
+// Optional gateway metadata must never make an otherwise valid model list
+// disappear. Accept numeric strings too; malformed values remain unknown.
+type modelContextTokens int
+
+func (tokens *modelContextTokens) UnmarshalJSON(raw []byte) error {
+	*tokens = 0
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err == nil {
+		if value, err := number.Int64(); err == nil && value >= 4096 && value <= 2_000_000 {
+			*tokens = modelContextTokens(value)
+		}
+	}
+	return nil
 }
 
 func openAICompatibleAgentRuntimeProfiles(ctx context.Context, spec officialAgentModelProfileSpec, apiKey string) ([]domainAgentModelProfile, error) {
@@ -820,7 +858,7 @@ func openAICompatibleAgentRuntimeProfiles(ctx context.Context, spec officialAgen
 	seen := map[string]bool{}
 	for _, item := range models {
 		modelID := strings.TrimSpace(item.ID)
-		if modelID == "" || seen[modelID] || mediagoGatewayModelLooksTaskOnly(mediagoGatewayModel{ID: modelID}) {
+		if modelID == "" || seen[modelID] || openAIModelHasOnlyMediaOutput(item) || mediagoGatewayModelLooksTaskOnly(mediagoGatewayModel{ID: modelID}) {
 			continue
 		}
 		seen[modelID] = true
@@ -862,9 +900,16 @@ func fetchOpenAICompatibleModels(ctx context.Context, baseURL string, apiKey str
 		return nil, fmt.Errorf("openai-compatible model list returned HTTP %d", response.StatusCode)
 	}
 
-	var payload openAIModelListResponse
-	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&payload); err != nil {
+	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
+	if err != nil {
 		return nil, err
+	}
+	var payload openAIModelListResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("openai-compatible model list returned non-JSON data: %w", err)
+	}
+	if payload.Data == nil {
+		return nil, fmt.Errorf("openai-compatible model list is missing its data array")
 	}
 	return payload.Data, nil
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestDocumentSectionRepositoryUpsertAndMarkMissing(t *testing.T) {
@@ -12,6 +13,7 @@ func TestDocumentSectionRepositoryUpsertAndMarkMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	seedRepositoryProject(t, db, "project-sections")
 	repo := NewDocumentSectionRepositoryFromDB(db)
 
@@ -99,6 +101,7 @@ func TestDocumentSectionRepositoryUpsertPreservesDeletedStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	seedRepositoryProject(t, db, "project-deleted-section")
 	repo := NewDocumentSectionRepositoryFromDB(db)
 

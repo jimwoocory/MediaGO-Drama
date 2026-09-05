@@ -208,6 +208,9 @@ export interface AgentRuntimeSelectOption {
 	value: string;
 	name: string;
 	description?: string;
+	providerId?: string;
+	providerLabel?: string;
+	modelId?: string;
 }
 
 export interface AgentEvent {

@@ -47,11 +47,21 @@ type Session struct {
 
 // Start launches and initializes a Codex app-server session.
 func Start(parent context.Context, binPath string) (*Session, error) {
+	return start(parent, binPath, nil)
+}
+
+// StartImage uses the managed login with the official provider, independent of
+// the user's default text relay. Image jobs do not need shell, apps or plugins.
+func StartImage(parent context.Context, binPath string) (*Session, error) {
+	return start(parent, binPath, []string{"-c", `model_provider="openai"`, "--disable", "shell_tool", "--disable", "apps", "--disable", "plugins", "--enable", "image_generation"})
+}
+
+func start(parent context.Context, binPath string, overrides []string) (*Session, error) {
 	if strings.TrimSpace(binPath) == "" {
 		return nil, fmt.Errorf("Codex executable is required")
 	}
 	ctx, cancel := context.WithCancel(parent)
-	cmd := exec.CommandContext(ctx, binPath, "app-server", "--stdio")
+	cmd := exec.CommandContext(ctx, binPath, append(overrides, "app-server", "--stdio")...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
@@ -67,7 +77,7 @@ func Start(parent context.Context, binPath string) (*Session, error) {
 		cancel()
 		return nil, fmt.Errorf("starting app-server: %w", err)
 	}
-	session := &Session{cancel: cancel, cmd: cmd, stdin: stdin, scan: bufio.NewScanner(stdout)}
+	session := &Session{cancel: cancel, cmd: cmd, stdin: stdin, scan: newMessageScanner(stdout)}
 	if err := session.initialize(ctx); err != nil {
 		session.Close()
 		return nil, err
@@ -75,10 +85,18 @@ func Start(parent context.Context, binPath string) (*Session, error) {
 	return session, nil
 }
 
+func newMessageScanner(reader io.Reader) *bufio.Scanner {
+	scanner := bufio.NewScanner(reader)
+	// Image results exceed the default 64 KiB limit; retain a bounded maximum.
+	scanner.Buffer(make([]byte, 64*1024), 96*1024*1024)
+	return scanner
+}
+
 func (session *Session) initialize(ctx context.Context) error {
 	var ignored map[string]any
 	if err := session.Call(ctx, "initialize", map[string]any{
-		"clientInfo": map[string]string{"name": "mediago-drama", "title": "MediaGo Drama", "version": "1"},
+		"clientInfo":   map[string]string{"name": "mediago-drama", "title": "MediaGo Drama", "version": "1"},
+		"capabilities": map[string]bool{"experimentalApi": true},
 	}, &ignored); err != nil {
 		return fmt.Errorf("initializing app-server: %w", err)
 	}
@@ -104,7 +122,7 @@ func (session *Session) Call(ctx context.Context, method string, params any, out
 			return err
 		}
 		var responseID int
-		if len(message.ID) == 0 || json.Unmarshal(message.ID, &responseID) != nil || responseID != id {
+		if message.Method != "" || len(message.ID) == 0 || json.Unmarshal(message.ID, &responseID) != nil || responseID != id {
 			session.pending = append(session.pending, message)
 			continue
 		}

@@ -22,7 +22,12 @@ func (client *acpClient) ReadTextFile(_ context.Context, params acp.ReadTextFile
 		Type:    "agent.activity",
 		Message: "读取文件：" + client.displayPath(path),
 	})
-	content, err := os.ReadFile(path)
+	root, relative, err := client.workspaceRoot(path)
+	if err != nil {
+		return acp.ReadTextFileResponse{}, err
+	}
+	defer root.Close()
+	content, err := root.ReadFile(relative)
 	if err != nil {
 		acpLog().Error("acp read file failed", client.logAttrs("path", client.displayPath(path), "error", err)...)
 		return acp.ReadTextFileResponse{}, err
@@ -53,11 +58,16 @@ func (client *acpClient) WriteTextFile(_ context.Context, params acp.WriteTextFi
 		return acp.WriteTextFileResponse{}, err
 	}
 	acpLog().Debug("acp write file", client.logAttrs("path", client.displayPath(path), "bytes", len(params.Content))...)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	root, relative, err := client.workspaceRoot(path)
+	if err != nil {
+		return acp.WriteTextFileResponse{}, err
+	}
+	defer root.Close()
+	if err := root.MkdirAll(filepath.Dir(relative), 0o755); err != nil {
 		acpLog().Error("acp write file mkdir failed", client.logAttrs("path", client.displayPath(path), "error", err)...)
 		return acp.WriteTextFileResponse{}, err
 	}
-	if err := os.WriteFile(path, []byte(params.Content), 0o644); err != nil {
+	if err := root.WriteFile(relative, []byte(params.Content), 0o644); err != nil {
 		acpLog().Error("acp write file failed", client.logAttrs("path", client.displayPath(path), "error", err)...)
 		return acp.WriteTextFileResponse{}, err
 	}
@@ -77,7 +87,7 @@ func (client *acpClient) workspacePath(path string) (string, error) {
 	cleanPath := filepath.Clean(path)
 	root := filepath.Clean(client.workspaceDir)
 	if root == "" || root == "." {
-		return cleanPath, nil
+		return "", fmt.Errorf("workspace root is required")
 	}
 	relative, err := filepath.Rel(root, cleanPath)
 	if err != nil {
@@ -87,6 +97,20 @@ func (client *acpClient) workspacePath(path string) (string, error) {
 		return "", fmt.Errorf("path outside workspace: %s", path)
 	}
 	return cleanPath, nil
+}
+
+// workspaceRoot keeps I/O under an OS-managed directory handle. A lexical
+// path check alone cannot prevent symlink/junction escapes or link-swap races.
+func (client *acpClient) workspaceRoot(path string) (*os.Root, string, error) {
+	relative, err := filepath.Rel(filepath.Clean(client.workspaceDir), path)
+	if err != nil {
+		return nil, "", err
+	}
+	root, err := os.OpenRoot(client.workspaceDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("opening workspace root: %w", err)
+	}
+	return root, relative, nil
 }
 
 func (client *acpClient) displayPath(path string) string {

@@ -11,6 +11,12 @@ func buildRoutePrices() []RoutePrice {
 			RouteID:  route.ID,
 			Currency: "USD",
 		}
+		if route.ID == coregeneration.RouteVideoAPICompatible || route.ID == coregeneration.RouteSpeechAPICompatible {
+			// Configurable endpoints do not identify a fixed model or tariff.
+			price.Unit = UnitExternal
+			prices = append(prices, price)
+			continue
+		}
 		switch route.Kind {
 		case coregeneration.KindText:
 			price.Unit = UnitPerMillionTokens

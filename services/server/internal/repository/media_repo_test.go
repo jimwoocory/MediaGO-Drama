@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestMediaAssetRepositoryLifecycle(t *testing.T) {
@@ -13,6 +14,7 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 	seedRepositoryProject(t, repo.db, "alpha")
 
 	asset := domain.AssetModel{
@@ -163,6 +165,7 @@ func TestMediaAssetRepositoryListMediaAssetsFiltersByProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 	seedRepositoryProject(t, repo.db, "alpha")
 	seedRepositoryProject(t, repo.db, "beta")
 

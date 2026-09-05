@@ -227,6 +227,8 @@ type Detail struct {
 type RuntimeHomeDescriptor struct {
 	CodexHome string
 	Isolated  bool
+	// SharesHostSkills means the isolated provider explicitly imports host skill paths and rules.
+	SharesHostSkills bool
 }
 
 // RuntimeHomeProvider returns the expected MediaGo Codex runtime home without mutating it.

@@ -13,6 +13,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestCreateGenerationBatchPersistsOrderedChildTasks(t *testing.T) {
@@ -161,6 +162,7 @@ func newGenerationBatchTestWorkflow(t *testing.T) (*GenerationService, *Generati
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	now := domain.TimeFromString("2026-07-11T00:00:00Z")
 	if err := db.Create(&domain.WorkspaceProjectModel{
 		ID:          "project-batch",

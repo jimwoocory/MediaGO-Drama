@@ -1,3 +1,8 @@
+import { settingsErrorMessage } from "@/domains/settings/lib/settings-error";
+import {
+	UnifiedModelsPanel,
+	unifiedModelsKey,
+} from "@/domains/settings/components/UnifiedModelsPanel";
 import {
 	ArrowRight,
 	Check,
@@ -78,11 +83,6 @@ import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
 import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
-import {
-	ProviderCapabilityMatrix,
-	providerRowElementID,
-	type ProviderCapabilityTarget,
-} from "@/domains/settings/components/ProviderCapabilityMatrix";
 
 const jianyingDraftSettingsEnabled: boolean = false;
 const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== "false";
@@ -167,11 +167,9 @@ export const Settings: React.FC = () => {
 export const APIKeysPanel: React.FC<{
 	title?: string;
 	description?: string;
-	onOpenCodexAccess?: () => void;
 }> = ({
 	title = "API 密钥",
-	description = "Agent、图片、音频、视频按 Provider 能力独立接入；统一 API 默认使用第三方接口，本地与会员通道继续保留。",
-	onOpenCodexAccess,
+	description = "统一接口只需配置一次，文本、图片、音频和视频共用地址与密钥；下方独立接口为可选覆盖。",
 }) => {
 	const toast = useToast();
 	const { mutate: mutateGlobal } = useSWRConfig();
@@ -217,7 +215,7 @@ export const APIKeysPanel: React.FC<{
 	const [loggingInID, setLoggingInID] = useState<string>();
 	const [checkingLoginID, setCheckingLoginID] = useState<string>();
 	const [manualProviderID, setManualProviderID] = useState<string>();
-	const [aihubmixBaseURL, setAIHubMixBaseURL] = useState("https://aihubmix.com/v1");
+	const [aihubmixBaseURL, setAIHubMixBaseURL] = useState("");
 	const [speechAPIBaseURL, setSpeechAPIBaseURL] = useState("");
 	const [speechAPIModel, setSpeechAPIModel] = useState("gpt-4o-mini-tts");
 	const [speechAPIVoice, setSpeechAPIVoice] = useState("alloy");
@@ -228,6 +226,7 @@ export const APIKeysPanel: React.FC<{
 		(challenge) => challenge.status === "pending" && Boolean(challenge.verificationUri),
 	);
 	const revalidateModelDependentCaches = useCallback(() => {
+		void mutateGlobal(unifiedModelsKey, undefined, { revalidate: true });
 		void mutateGlobal(generationModelsKey, undefined, { revalidate: true });
 		void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
 	}, [mutateGlobal]);
@@ -440,7 +439,7 @@ export const APIKeysPanel: React.FC<{
 			setManualProviderID(undefined);
 			toast.success("第三方配置已保存", { description: nextSettings.baseURL });
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "保存第三方配置失败。";
+			const message = settingsErrorMessage(err, "保存第三方配置失败。");
 			toast.error("保存失败", { description: message });
 		} finally {
 			setSavingID(undefined);
@@ -469,7 +468,7 @@ export const APIKeysPanel: React.FC<{
 			setManualProviderID(undefined);
 			toast.success("第三方 Speech API 配置已保存", { description: nextSettings.model });
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "保存第三方 Speech API 配置失败。";
+			const message = settingsErrorMessage(err, "保存第三方 Speech API 配置失败。");
 			toast.error("保存失败", { description: message });
 		} finally {
 			setSavingID(undefined);
@@ -497,7 +496,7 @@ export const APIKeysPanel: React.FC<{
 				description: `${nextSettings.model} · 已接入生成视频工作台`,
 			});
 		} catch (err) {
-			const message = err instanceof Error ? err.message : "保存第三方 Video API 配置失败。";
+			const message = settingsErrorMessage(err, "保存第三方 Video API 配置失败。");
 			toast.error("保存失败", { description: message });
 		} finally {
 			setSavingID(undefined);
@@ -512,7 +511,7 @@ export const APIKeysPanel: React.FC<{
 		const isCheckingLogin = checkingLoginID === provider.id;
 		const isMediago = provider.id === mediagoProviderID;
 		return (
-			<div id={providerRowElementID(provider.id)} key={provider.id}>
+			<div key={provider.id}>
 				<APIKeyProviderRow
 					provider={provider}
 					apiKey={apiKey}
@@ -546,7 +545,7 @@ export const APIKeysPanel: React.FC<{
 		const isSpeechAPI = provider.id === "speechapi";
 		const isVideoAPI = provider.id === "videoapi";
 		return (
-			<div id={providerRowElementID(provider.id)} key={provider.id}>
+			<div key={provider.id}>
 				<ManualAPIKeyProviderRow
 					apiKey={apiKey}
 					baseURL={
@@ -597,30 +596,6 @@ export const APIKeysPanel: React.FC<{
 		);
 	};
 
-	const otherProviderIDs = new Set([
-		...customProviders.map((provider) => provider.id),
-		...officialProviders.map((provider) => provider.id),
-	]);
-	const selectProviderFromMatrix = (providerID: string, target: ProviderCapabilityTarget) => {
-		if (target === "codex-access") {
-			if (onOpenCodexAccess) {
-				onOpenCodexAccess();
-			} else {
-				useSettingsNavigationStore.getState().setActiveTab("codex-access");
-			}
-			return;
-		}
-		if (otherProviderIDs.has(providerID)) {
-			setOtherProvidersExpanded(true);
-		}
-		window.requestAnimationFrame(() => {
-			document.getElementById(providerRowElementID(providerID))?.scrollIntoView({
-				behavior: "smooth",
-				block: "center",
-			});
-		});
-	};
-
 	const renderCustomProvider = (provider: APIKeyProvider) =>
 		renderManualProvider(provider, "custom");
 	const renderOfficialProvider = (provider: APIKeyProvider) =>
@@ -637,10 +612,6 @@ export const APIKeysPanel: React.FC<{
 			icon={<KeyRound className="size-4" />}
 		>
 			<div className="mx-auto w-full max-w-5xl divide-y divide-border">
-				<ProviderCapabilityMatrix
-					onSelectProvider={selectProviderFromMatrix}
-					providers={providers}
-				/>
 				{(isLoading || isModelPlatformsLoading) && providers.length === 0 ? (
 					<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
 						<Loader2 className="size-4 animate-spin" />
@@ -651,9 +622,10 @@ export const APIKeysPanel: React.FC<{
 					<CredentialCategorySection
 						className="py-8"
 						title="统一接口（第三方）"
-						description="默认模型网关。保存一个第三方 API Key，用于当前已适配的文本生成与智能体模型；会员 CLI 通道继续使用。"
+						description="一次配置，共享凭据。根据模型输出能力和调用协议，自动分配到 Agent、图片、音频和视频工作台。"
 					>
 						{renderManualProvider(aihubmixProvider, "custom")}
+						<UnifiedModelsPanel configured={aihubmixProvider.configured} />
 					</CredentialCategorySection>
 				) : null}
 				{speechAPIProvider ? (
@@ -669,7 +641,7 @@ export const APIKeysPanel: React.FC<{
 					<CredentialCategorySection
 						className="py-8"
 						title="视频接口（第三方 Video API）"
-						description="配置 Base URL、Model ID 和 API Key；保存后该 Provider 会直接出现在生成视频工作台。"
+						description="OpenAI-style 异步视频生成接口。可填写 API 根地址或完整的 /videos 地址；保存后无需即梦授权，该模型会直接出现在生成视频工作台。"
 					>
 						{renderManualProvider(videoAPIProvider, "custom")}
 					</CredentialCategorySection>
@@ -694,7 +666,7 @@ export const APIKeysPanel: React.FC<{
 							<div className="min-w-0">
 								<h3 className="text-sm font-semibold text-foreground">其他接入方式</h3>
 								<p className="mt-1 text-xs leading-5 text-muted-foreground">
-									自定义接口与官方供应商凭据，适合已有对应平台账号或额度的场景。
+									可选的官方供应商与预设 Provider，适合已有对应平台账号或额度的场景。
 								</p>
 							</div>
 							<ChevronDown
@@ -1263,7 +1235,7 @@ const ManualProviderConfigDialog: React.FC<{
 								: model !== undefined || voice !== undefined
 									? "配置 OpenAI-compatible Base URL、模型 ID、默认音色和 API Key。"
 									: baseURL !== undefined
-										? "配置 OpenAI-compatible Base URL 和 API Key；保存后 MediaGo Agent Core 会自动读取可用模型。"
+										? "配置 OpenAI-compatible Base URL 和 API Key；保存后 JW Drama 会自动读取可用模型。"
 										: variant === "custom"
 											? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
 											: variant === "cli"
@@ -1291,7 +1263,7 @@ const ManualProviderConfigDialog: React.FC<{
 								className="h-10 rounded-md font-mono text-sm text-foreground"
 								value={baseURL}
 								onChange={(event) => onBaseURLChange(event.target.value)}
-								placeholder={baseURLPlaceholder || "https://aihubmix.com/v1"}
+								placeholder={baseURLPlaceholder || "https://api.example.com/v1"}
 							/>
 						</div>
 					) : null}

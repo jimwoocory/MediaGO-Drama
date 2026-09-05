@@ -96,7 +96,7 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		return generation.Response{}, err
 	}
 
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.baseURL+"/videos", &body)
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, provider.videosURL(), &body)
 	if err != nil {
 		return generation.Response{}, err
 	}
@@ -113,7 +113,7 @@ func (provider *Provider) Get(ctx context.Context, id string) (generation.Respon
 	httpRequest, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		provider.baseURL+"/videos/"+url.PathEscape(id),
+		provider.videosURL()+"/"+url.PathEscape(id),
 		nil,
 	)
 	if err != nil {
@@ -176,6 +176,14 @@ func (provider *Provider) authorization() string {
 		return provider.apiKey
 	}
 	return "Bearer " + provider.apiKey
+}
+
+func (provider *Provider) videosURL() string {
+	baseURL := strings.TrimRight(provider.baseURL, "/")
+	if strings.HasSuffix(strings.ToLower(baseURL), "/videos") {
+		return baseURL
+	}
+	return baseURL + "/videos"
 }
 
 func normalizeStatus(value, fallback string, hasVideo bool) string {

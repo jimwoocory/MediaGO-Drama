@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -100,6 +102,11 @@ func (handler Settings) HandleModelPlatforms(context *gin.Context) {
 }
 
 // HandleAIHubMixSettings returns the editable AIHubMix endpoint.
+// @Summary 获取统一第三方接口设置
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/settings/aihubmix [get]
 func (handler Settings) HandleAIHubMixSettings(context *gin.Context) {
 	settings, err := handler.service.GetAIHubMixSettings(context.Request.Context())
 	if err != nil {
@@ -110,6 +117,13 @@ func (handler Settings) HandleAIHubMixSettings(context *gin.Context) {
 }
 
 // HandlePutAIHubMixSettings persists the editable AIHubMix endpoint.
+// @Summary 保存统一第三方接口设置
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param payload body AIHubMixSettingsRequest true "接口设置"
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/settings/aihubmix [put]
 func (handler Settings) HandlePutAIHubMixSettings(context *gin.Context) {
 	payload, err := decodeJSON[AIHubMixSettingsRequest](context)
 	if err != nil {
@@ -128,6 +142,11 @@ func (handler Settings) HandlePutAIHubMixSettings(context *gin.Context) {
 }
 
 // HandleSpeechAPISettings returns the third-party TTS endpoint settings.
+// @Summary 获取第三方音频接口设置
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/settings/speech-api [get]
 func (handler Settings) HandleSpeechAPISettings(context *gin.Context) {
 	settings, err := handler.service.GetSpeechAPISettings(context.Request.Context())
 	if err != nil {
@@ -138,6 +157,13 @@ func (handler Settings) HandleSpeechAPISettings(context *gin.Context) {
 }
 
 // HandlePutSpeechAPISettings persists the third-party TTS endpoint settings.
+// @Summary 保存第三方音频接口设置
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param payload body SpeechAPISettingsRequest true "音频接口设置"
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/settings/speech-api [put]
 func (handler Settings) HandlePutSpeechAPISettings(context *gin.Context) {
 	payload, err := decodeJSON[SpeechAPISettingsRequest](context)
 	if err != nil {
@@ -156,6 +182,11 @@ func (handler Settings) HandlePutSpeechAPISettings(context *gin.Context) {
 }
 
 // HandleVideoAPISettings returns the third-party video endpoint settings.
+// @Summary 获取第三方视频接口设置
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/settings/video-api [get]
 func (handler Settings) HandleVideoAPISettings(context *gin.Context) {
 	settings, err := handler.service.GetVideoAPISettings(context.Request.Context())
 	if err != nil {
@@ -166,6 +197,13 @@ func (handler Settings) HandleVideoAPISettings(context *gin.Context) {
 }
 
 // HandlePutVideoAPISettings persists the third-party video endpoint settings.
+// @Summary 保存第三方视频接口设置
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param payload body VideoAPISettingsRequest true "视频接口设置"
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/settings/video-api [put]
 func (handler Settings) HandlePutVideoAPISettings(context *gin.Context) {
 	payload, err := decodeJSON[VideoAPISettingsRequest](context)
 	if err != nil {
@@ -489,6 +527,24 @@ func (handler Settings) HandleCodexRelayProxy(context *gin.Context) {
 		return
 	}
 	defer upstream.Body.Close()
+	if upstream.StatusCode >= 400 {
+		// Retain the upstream response verbatim. Record only bounded, safe codes,
+		// never authorization headers, request bodies, or arbitrary error messages.
+		prefix, _ := io.ReadAll(io.LimitReader(upstream.Body, 32<<10))
+		var failure struct {
+			Error struct {
+				Code string `json:"code"`
+				Type string `json:"type"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal(prefix, &failure)
+		slog.Warn("codex relay upstream rejected request", "relay_path", context.Param("path"), "upstream_status", upstream.StatusCode,
+			"upstream_code", safeRelayErrorCode(failure.Error.Code), "upstream_type", safeRelayErrorCode(failure.Error.Type))
+		upstream.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(prefix), upstream.Body), upstream.Body}
+	}
 
 	for _, key := range []string{"Content-Type", "Cache-Control"} {
 		if value := upstream.Header.Get(key); value != "" {
@@ -508,6 +564,18 @@ func writeCodexRelayError(context *gin.Context, status int, err error) {
 			"type":    "codex_relay_error",
 		},
 	})
+}
+
+func safeRelayErrorCode(value string) string {
+	if len(value) > 80 {
+		return ""
+	}
+	for _, char := range value {
+		if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' || char == '-' || char == '.') {
+			return ""
+		}
+	}
+	return value
 }
 
 // HandlePutAPIKey godoc

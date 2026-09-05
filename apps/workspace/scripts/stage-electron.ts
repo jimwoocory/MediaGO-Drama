@@ -11,7 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const agent = process.argv[2]?.trim() || "";
+const agent = process.argv[2]?.trim() || "codex";
 const platformArg = process.argv[3]?.trim() || "";
 const modelPlatform = process.argv[4]?.trim() || "";
 const mediagoBaseURL =

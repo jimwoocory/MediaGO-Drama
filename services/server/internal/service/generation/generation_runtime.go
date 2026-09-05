@@ -125,6 +125,23 @@ func (workflow *GenerationService) SetDocumentResolver(documents GenerationDocum
 // ListGenerationModels returns the generation model catalog for HTTP handlers.
 func (workflow *GenerationService) ListGenerationModels() generationModelsResponse {
 	catalog := coregeneration.Catalog()
+	codexImageAvailable := workflow.settings.CodexImageAvailable(context.Background())
+	if codexImageAvailable {
+		coregeneration.AppendUnifiedRoute(&catalog, coregeneration.CodexImageRoute())
+		catalog.Providers = append(catalog.Providers, coregeneration.ProviderInfo{ID: coregeneration.ProviderCodexImage, Label: "Codex · ChatGPT 订阅", ProviderType: coregeneration.ProviderTypeOfficial})
+	}
+	unifiedRoutes := map[string]bool{}
+	if models, err := workflow.settings.ListUnifiedModels(context.Background(), false); err == nil {
+		for _, model := range models.Models {
+			if !model.Enabled {
+				continue
+			}
+			if route, ok := coregeneration.UnifiedRoute(model.ID, model.Protocol); ok {
+				coregeneration.AppendUnifiedRoute(&catalog, route)
+				unifiedRoutes[route.ID] = true
+			}
+		}
+	}
 	videoSettings, _ := workflow.settings.GetVideoAPISettings(context.Background())
 	videoModel := strings.TrimSpace(videoSettings.Model)
 	if videoModel != "" {
@@ -147,6 +164,14 @@ func (workflow *GenerationService) ListGenerationModels() generationModelsRespon
 	}
 	mediagoModels, hasMediagoCatalog := workflow.mediagoAvailableModelsForCatalog(context.Background())
 	for index := range catalog.Routes {
+		if catalog.Routes[index].Provider == coregeneration.ProviderUnified {
+			catalog.Routes[index].Configured = unifiedRoutes[catalog.Routes[index].ID]
+			continue
+		}
+		if catalog.Routes[index].Provider == coregeneration.ProviderCodexImage {
+			catalog.Routes[index].Configured = codexImageAvailable
+			continue
+		}
 		catalog.Routes[index].Configured = workflow.generationRouteConfiguredWithMediagoModels(
 			catalog.Routes[index],
 			mediagoModels,

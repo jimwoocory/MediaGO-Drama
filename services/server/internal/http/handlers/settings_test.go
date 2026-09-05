@@ -17,6 +17,17 @@ type fakeAPIKeyStore struct {
 	values map[string]string
 }
 
+func TestSafeRelayErrorCodeRejectsUnstructuredDetails(t *testing.T) {
+	for _, item := range []struct{ value, want string }{
+		{"model_not_available", "model_not_available"},
+		{"Bearer secret", ""}, {"line\nbreak", ""}, {strings.Repeat("x", 81), ""},
+	} {
+		if got := safeRelayErrorCode(item.value); got != item.want {
+			t.Fatalf("unsafe error code: %q", got)
+		}
+	}
+}
+
 func (store *fakeAPIKeyStore) Get(keyName string) (string, string, error) {
 	value := store.values[keyName]
 	if value == "" {

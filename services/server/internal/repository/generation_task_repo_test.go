@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestGenerationTaskRepositoryLifecycle(t *testing.T) {
@@ -14,6 +15,7 @@ func TestGenerationTaskRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 	seedGenerationProject(t, repo, "alpha")
 
 	conversation := domain.GenerationConversationModel{
@@ -215,6 +217,7 @@ func TestGenerationTaskRepositoryListDefaultLimitAndOffset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 	seedGenerationProject(t, repo, "project-list")
 	if err := repo.UpsertGenerationConversation(domain.GenerationConversationModel{
 		ID:        "session-list",
@@ -311,6 +314,7 @@ func TestGenerationTaskRepositoryListsBatchInItemOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 
 	for _, fixture := range []struct {
 		id        string

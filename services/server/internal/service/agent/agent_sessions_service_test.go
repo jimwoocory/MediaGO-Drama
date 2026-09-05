@@ -7,6 +7,7 @@ import (
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestSessionServiceRunsOneAgentAtATime(t *testing.T) {
@@ -301,6 +302,7 @@ func newTestAgentSessionRepository(t *testing.T) *repository.AgentSessionReposit
 	if err != nil {
 		t.Fatalf("opening workspace database: %v", err)
 	}
+	testutil.CloseDB(t, db)
 	now := domain.TimeFromString("2026-06-01T00:00:00Z")
 	if err := db.Create(&domain.WorkspaceProjectModel{
 		ID:          "project-1",

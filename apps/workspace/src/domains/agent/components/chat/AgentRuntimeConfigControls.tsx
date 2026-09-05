@@ -31,6 +31,7 @@ import {
 	SelectValue,
 } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
+import { reasoningConfigForModel } from "@/domains/agent/lib/provider-reasoning";
 
 interface AgentRuntimeConfigControlsProps {
 	config?: AgentRuntimeConfigPayload;
@@ -61,6 +62,7 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 	onPermissionChange,
 	onRetry,
 }) => {
+	const selectedModel = modelValue || config?.model?.currentValue || "";
 	const hasRuntimeConfigOptions = [config?.model, config?.reasoning, config?.permission].some(
 		(item) => runtimeConfigOptions(item).length > 0,
 	);
@@ -117,7 +119,7 @@ export const AgentRuntimeConfigControls: React.FC<AgentRuntimeConfigControlsProp
 			<AgentRuntimeConfigSelect
 				label="推理强度"
 				icon={Sparkles}
-				config={config?.reasoning}
+				config={reasoningConfigForModel(selectedModel, config?.reasoning)}
 				value={reasoningValue}
 				disabled={disabled}
 				onChange={onReasoningChange}
@@ -733,12 +735,15 @@ const parseAgentRuntimeModelOption = (
 	const value = option.value.trim();
 	const nameParts = splitAgentProviderModel(name);
 	const valueParts = splitAgentProviderModel(value);
-	const providerSource = nameParts?.provider ?? valueParts?.provider ?? "";
+	const providerSource =
+		option.providerLabel ?? option.providerId ?? nameParts?.provider ?? valueParts?.provider ?? "";
 	const fallbackName = name && name !== value ? name : "";
-	const modelLabel = nameParts?.model || fallbackName || valueParts?.model || value || "模型";
+	const modelLabel = option.modelId
+		? name || option.modelId
+		: nameParts?.model || fallbackName || valueParts?.model || value || "模型";
 	const providerLabel = agentProviderLabel(providerSource);
 	const modelKey = normalizeAgentOptionKey(modelLabel);
-	const categoryKey = normalizeAgentOptionKey(providerLabel);
+	const categoryKey = option.providerId || normalizeAgentOptionKey(providerLabel);
 
 	return {
 		categoryKey: categoryKey || "default",
@@ -803,6 +808,8 @@ const agentProviderLabel = (provider: string) => {
 			return "MediaGo";
 		case "aihubmix":
 			return "AIHubMix";
+		case "openaicompatible":
+			return "OpenAI-compatible";
 		case "deepseek":
 			return "DeepSeek";
 		case "openrouter":
@@ -897,6 +904,8 @@ export const normalizeRuntimeConfigValue = (
 	if (options.length === 0) return "";
 	const values = new Set(options.map((option) => option.value));
 	if (current && values.has(current)) return current;
+	const canonicalCurrent = current.replace(/^gateway-openai-compatible:/, "gateway-aihubmix:");
+	if (canonicalCurrent && values.has(canonicalCurrent)) return canonicalCurrent;
 	const currentValue = config?.currentValue?.trim() ?? "";
 	if (currentValue && values.has(currentValue)) return currentValue;
 	return options[0]?.value ?? "";

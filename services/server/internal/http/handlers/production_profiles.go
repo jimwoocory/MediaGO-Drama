@@ -20,6 +20,12 @@ type productionProfileListResponse struct {
 	Profiles      []serviceproductionprofile.Profile `json:"profiles"`
 }
 
+// HandleListProductionProfiles returns the built-in production planning profiles.
+// @Summary 获取制作模式
+// @Tags Projects
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Router /api/v1/production-profiles [get]
 func (handler ProductionProfiles) HandleListProductionProfiles(context *gin.Context) {
 	profiles := []serviceproductionprofile.Profile{}
 	if handler.registry != nil {

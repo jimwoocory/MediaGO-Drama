@@ -1,4 +1,4 @@
-import { resolveActiveConversation } from "./conversation";
+import { isTerminalConversationStatus, resolveActiveConversation } from "./conversation";
 import type { AgentMessage, AgentState } from "./types";
 
 const emptyAgentMessages: AgentMessage[] = [];
@@ -11,6 +11,17 @@ export const selectAgentConversations = (state: AgentState) => state.conversatio
 
 export const selectAgentActiveConversation = (state: AgentState) =>
 	resolveActiveConversation(state.conversations, state.rootRunId);
+
+/** Live UI must not fall back to a historical conversation with messages. */
+export const selectAgentRootConversation = (state: AgentState) =>
+	state.rootRunId ? state.conversations[state.rootRunId] : undefined;
+
+export const selectAgentLiveConversation = (state: AgentState) => {
+	const conversation = state.rootRunId ? state.conversations[state.rootRunId] : undefined;
+	return state.isRunning && conversation && !isTerminalConversationStatus(conversation.status)
+		? conversation
+		: undefined;
+};
 
 export const selectAgentExpand = (state: AgentState) => state.expand;
 

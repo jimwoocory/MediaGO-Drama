@@ -844,7 +844,64 @@ func TestPrepareOpenCodeRuntimeConfigDoesNotFallbackToStaticMediagoModelsWhenUse
 	}
 }
 
-func TestPrepareOpenCodeRuntimeConfigUsesConfiguredAIHubMixModels(t *testing.T) {
+func TestOpenAICompatibleEndpointIsGenericButKeepsLegacyAIHubMixDefault(t *testing.T) {
+	settings := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+
+	fresh, err := settings.GetAIHubMixSettings(context.Background())
+	if err != nil {
+		t.Fatalf("GetAIHubMixSettings returned error: %v", err)
+	}
+	if fresh.BaseURL != "" {
+		t.Fatalf("fresh BaseURL = %q, want no vendor-specific default", fresh.BaseURL)
+	}
+
+	if _, err := settings.SetAPIKey(context.Background(), agentModelProviderAIHubMix, "sk-existing-aihubmix"); err != nil {
+		t.Fatalf("SetAPIKey returned error: %v", err)
+	}
+	legacy, err := settings.GetAIHubMixSettings(context.Background())
+	if err != nil {
+		t.Fatalf("GetAIHubMixSettings with legacy key returned error: %v", err)
+	}
+	if legacy.BaseURL != defaultAIHubMixBaseURL {
+		t.Fatalf("legacy BaseURL = %q, want %q", legacy.BaseURL, defaultAIHubMixBaseURL)
+	}
+
+	custom, err := settings.SetAIHubMixSettings(context.Background(), AIHubMixSettings{BaseURL: "https://tokease.cn/v1/chat/completions"})
+	if err != nil {
+		t.Fatalf("SetAIHubMixSettings returned error: %v", err)
+	}
+	if custom.BaseURL != "https://tokease.cn/v1" {
+		t.Fatalf("custom BaseURL = %q, want normalized Tokease endpoint", custom.BaseURL)
+	}
+	stored := &memoryAppSettingStore{values: map[string]string{
+		aihubmixBaseURLSettingKey: "https://tokease.cn/v1",
+	}}
+	existing := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{agentModelProviderAIHubMix: "sk-existing"}},
+		nil,
+		stored,
+	)
+	migrated, err := existing.GetAIHubMixSettings(context.Background())
+	if err != nil {
+		t.Fatalf("GetAIHubMixSettings for existing Tokease URL returned error: %v", err)
+	}
+	if migrated.BaseURL != "https://tokease.cn/v1" {
+		t.Fatalf("existing BaseURL = %q, want normalized Tokease endpoint", migrated.BaseURL)
+	}
+}
+
+func TestOpenAICompatibleEndpointRejectsVLTypo(t *testing.T) {
+	_, err := normalizeOpenAICompatibleBaseURL("https://tokease.cn/vl")
+	if err == nil || !strings.Contains(err.Error(), "/v1") {
+		t.Fatalf("normalize error = %v, want actionable /vl to /v1 guidance", err)
+	}
+}
+
+func TestPrepareOpenCodeRuntimeConfigUsesConfiguredOpenAICompatibleModels(t *testing.T) {
 	var sawAuthorization string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/v1/models" {
@@ -889,13 +946,13 @@ func TestPrepareOpenCodeRuntimeConfigUsesConfiguredAIHubMixModels(t *testing.T) 
 	if config.ProfileCount != 2 {
 		t.Fatalf("ProfileCount = %d, want 2 available Agent-capable AIHubMix models", config.ProfileCount)
 	}
-	for _, want := range []string{"aihubmix/deepseek-v4-pro", "aihubmix/gpt-5.5"} {
+	for _, want := range []string{"openai-compatible/deepseek-v4-pro", "openai-compatible/gpt-5.5"} {
 		if !stringSliceContains(config.AllowedModelValues, want) {
 			t.Fatalf("allowed model values = %#v, missing %q", config.AllowedModelValues, want)
 		}
 	}
-	if !stringSliceContains(config.AllowedModelProviders, agentModelProviderAIHubMix) {
-		t.Fatalf("allowed providers = %#v, want AIHubMix", config.AllowedModelProviders)
+	if !stringSliceContains(config.AllowedModelProviders, agentModelProviderCompatible) {
+		t.Fatalf("allowed providers = %#v, want OpenAI-compatible", config.AllowedModelProviders)
 	}
 	models, err := settings.ListConfiguredAgentCoreRuntimeModels(context.Background())
 	if err != nil {

@@ -351,9 +351,10 @@ describe("AgentTimeline", () => {
 		expect(disclosure).toHaveAttribute("aria-expanded", "false");
 		fireEvent.click(disclosure);
 
-		expect(screen.getByText("3 / 3 完成")).toBeTruthy();
+		expect(screen.getByText("2 / 3 完成")).toBeTruthy();
+		expect(screen.getByText("未确认")).toBeTruthy();
 		expect(screen.getByText("读取第二章剧本与角色设定")).toBeTruthy();
-		expect(screen.getByText("逐场拆解镜头并撰写画面说明")).toBeTruthy();
+		expect(screen.getByText("逐场拆解镜头并撰写画面说明", { exact: false })).toBeTruthy();
 		expect(document.querySelector(".agent-plan-status-icon.animate-spin")).toBeNull();
 	});
 

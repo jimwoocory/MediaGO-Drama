@@ -443,7 +443,10 @@ describe("EpisodeTimelineEditor", () => {
 
 	it("renders clip strip poster URLs against the packaged desktop server", () => {
 		vi.stubEnv("DEV", false);
-		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		window.mediagoDesktop = {
+			isElectron: true,
+			sidecarOrigin: "http://127.0.0.1:48273",
+		} as typeof window.mediagoDesktop;
 
 		render(
 			<EpisodeTimelineEditor

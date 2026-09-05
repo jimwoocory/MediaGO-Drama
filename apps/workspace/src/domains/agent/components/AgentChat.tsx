@@ -27,6 +27,7 @@ import {
 } from "@/domains/agent/components/chat/AgentRuntimeConfigControls";
 import { listSkills, skillsKey } from "@/domains/settings/api/skills";
 import { buildAgentDisplayMetadata } from "@/domains/agent/lib/display-attachments";
+import { reasoningConfigForModel } from "@/domains/agent/lib/provider-reasoning";
 import { openCommentsPromptFallback } from "@/domains/agent/lib/display-prompt";
 import {
 	createPendingAttachment,
@@ -40,6 +41,8 @@ import { runAgentPrompt, stopAgentRun } from "@/domains/agent/lib/controller";
 import {
 	selectAgentComposerSeed,
 	selectAgentIsRunning,
+	selectAgentLiveConversation,
+	selectAgentRootConversation,
 	selectAgentMessages,
 	selectAgentRuntimeAlerts,
 	selectConsumeAgentComposerSeed,
@@ -74,6 +77,8 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	const [isSavingAttachments, setIsSavingAttachments] = useState(false);
 	const messages = useAgentStore(selectAgentMessages);
 	const isRunning = useAgentStore(selectAgentIsRunning);
+	const liveConversation = useAgentStore(selectAgentLiveConversation);
+	const rootConversation = useAgentStore(selectAgentRootConversation);
 	const isChatHydrating = useAgentStore((state) => state.isChatHydrating);
 	const runtimeAlerts = useAgentStore(selectAgentRuntimeAlerts);
 	const composerSeed = useAgentStore(selectAgentComposerSeed);
@@ -345,7 +350,12 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				/>
 			</div>
 			<PendingPermissionRequests />
-			<AgentLivePlan isRunning={isRunning} messages={messages} />
+			<AgentLivePlan
+				isRunning={Boolean(liveConversation)}
+				runId={rootConversation?.runId ?? null}
+				status={rootConversation?.status}
+				messages={rootConversation?.messages ?? []}
+			/>
 			<AgentChatComposerForm
 				attachments={attachments}
 				canSubmit={canSubmit}
@@ -409,6 +419,8 @@ const runtimeConfigFilteredForSelectedModel = (
 	config: AgentRuntimeConfigPayload | undefined,
 	modelValue: string,
 ): AgentRuntimeConfigPayload | undefined => {
+	const reasoning = reasoningConfigForModel(modelValue, config?.reasoning);
+	if (reasoning !== config?.reasoning) return { ...config, reasoning };
 	if (!config?.reasoning || config.reasoning.source !== OPENCODE_THINKING_FALLBACK_SOURCE) {
 		return config;
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
@@ -13,6 +14,7 @@ func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	repo := NewWorkspaceRepository(db)
 
 	project := domain.WorkspaceProjectModel{
@@ -103,6 +105,7 @@ func TestWorkspaceRepositoryProjectLifecycleFieldsMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	repo := NewWorkspaceRepository(db)
 	now := domain.TimeFromString("2026-06-17T00:00:00Z")
 
@@ -133,6 +136,7 @@ func TestWorkspaceRepositoryProjectStatusLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	repo := NewWorkspaceRepository(db)
 	rootDir := t.TempDir()
 	now := domain.TimeFromString("2026-06-17T00:00:00Z")
@@ -243,6 +247,7 @@ func TestWorkspaceRepositoryDeletesDeprecatedStudioCapabilityProjects(t *testing
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	repo := NewWorkspaceRepository(db)
 	now := domain.TimeFromString("2026-06-06T00:00:00Z")
 	legacyProjectID := "project-legacy-studio"
@@ -329,6 +334,7 @@ func TestWorkspaceRepositoryUpdatesProjectStorageLocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	repo := NewWorkspaceRepository(db)
 	projectID := "project-local"
 	otherProjectID := "project-other"

@@ -3,6 +3,7 @@ package prompt
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,7 +75,8 @@ func assertPromptSnapshot(t *testing.T, name string, got string) {
 	if err != nil {
 		t.Fatalf("ReadFile(%q) error = %v", path, err)
 	}
-	if got != string(want) {
+	// Git may check out text fixtures with CRLF on Windows; prompt bytes remain LF.
+	if got != strings.ReplaceAll(string(want), "\r\n", "\n") {
 		t.Fatalf("prompt snapshot %q mismatch\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
 	}
 }

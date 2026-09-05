@@ -182,7 +182,7 @@ const createLoginWindow = async () => {
 		return;
 	}
 	loginWindow = new BrowserWindow({
-		title: "小树人 MediaGo Drama",
+		title: "JW Drama",
 		width: 520,
 		height: 650,
 		minWidth: 520,
@@ -322,7 +322,7 @@ const openPromptPackEditorWindow = async (options: PromptPackEditorOpenOptions =
 
 const createWindow = async () => {
 	mainWindow = new BrowserWindow({
-		title: "小树人 MediaGo Drama",
+		title: "JW Drama",
 		width: 1280,
 		height: 905,
 		minWidth: 960,
@@ -638,7 +638,7 @@ if (!app.requestSingleInstanceLock()) {
 		.catch((error: unknown) => {
 			console.error("[mediago-electron] failed to start", error);
 			dialog.showErrorBox(
-				"小树人 MediaGo Drama 无法安全启动",
+				"JW Drama 无法安全启动",
 				error instanceof Error ? error.message : "本地数据或服务状态无法安全恢复。",
 			);
 			app.quit();

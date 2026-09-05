@@ -352,6 +352,12 @@ func TestBillingPriceOverlayCoversAvailableRoutes(t *testing.T) {
 		t.Fatalf("loadBillingPrices() error = %v", err)
 	}
 
+	for _, routeID := range []string{coregeneration.RouteVideoAPICompatible, coregeneration.RouteSpeechAPICompatible} {
+		if _, priced := corepricing.EstimateCost(table, routeID, corepricing.Usage{Calls: 1}); priced {
+			t.Fatalf("generic external route %q must not have a fabricated fixed cost", routeID)
+		}
+	}
+
 	cost, ok := corepricing.EstimateCost(table, coregeneration.RouteOfficialGPT41MiniText, corepricing.Usage{
 		InputTokens:  1_000_000,
 		OutputTokens: 500_000,

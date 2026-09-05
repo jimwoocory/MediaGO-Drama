@@ -88,6 +88,7 @@ export interface AgentMessageMetadata {
 	outputBlocks?: AgentACPContentBlock[];
 	locations?: AgentACPLocation[];
 	planEntries?: AgentACPPlanEntry[];
+	planToolStates?: Record<string, string>;
 	bytes?: number;
 	lines?: number;
 	startedAt?: string;

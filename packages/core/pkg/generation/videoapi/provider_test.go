@@ -74,3 +74,41 @@ func TestProviderRejectsReferences(t *testing.T) {
 		t.Fatalf("Generate() error = %v", err)
 	}
 }
+
+func TestProviderAcceptsFullVideosEndpoint(t *testing.T) {
+	paths := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		paths = append(paths, request.URL.Path)
+		if request.Method == http.MethodPost {
+			_ = json.NewEncoder(writer).Encode(map[string]any{
+				"id": "video-task-2", "status": "queued",
+			})
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"id": "video-task-2", "status": "succeeded", "video_url": "https://example.test/result.mp4",
+		})
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		BaseURL: server.URL + "/v1/videos/",
+		APIKey:  "sk-video",
+		Model:   "seedance-custom",
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	created, err := provider.Generate(context.Background(), generation.Request{
+		Kind: generation.KindVideo, Prompt: "camera pushes in",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if _, err := provider.Get(context.Background(), created.ID); err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got, want := strings.Join(paths, ","), "/v1/videos,/v1/videos/video-task-2"; got != want {
+		t.Fatalf("request paths = %q, want %q", got, want)
+	}
+}

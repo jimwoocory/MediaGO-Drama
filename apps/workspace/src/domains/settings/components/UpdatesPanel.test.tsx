@@ -163,12 +163,13 @@ describe("UpdatesPanel", () => {
 		vi.mocked(getDesktopUpdateCapability).mockResolvedValue(unsupportedCapability);
 		render(<UpdatesPanel />);
 
+		// The fallback button also exists while capability is still loading.
+		expect(await screen.findByText(/macOS 未启用签名/)).toBeInTheDocument();
 		const link = await screen.findByRole("button", { name: /前往下载页/ });
 		expect(link).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: /检查更新/ })).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "下载更新" })).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "安装更新并重启" })).not.toBeInTheDocument();
-		expect(screen.getByText(/macOS 未启用签名/)).toBeInTheDocument();
 
 		fireEvent.click(link);
 		await waitFor(() =>

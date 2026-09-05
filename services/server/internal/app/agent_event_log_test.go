@@ -110,7 +110,7 @@ func TestAgentSessionsEndpointListsProjectSessions(t *testing.T) {
 func TestAgentMessageUsesFixedPromptWithoutSpawnRules(t *testing.T) {
 	requests := make(chan agentRunRequest, 1)
 	dbPath := filepathForTestDB(t)
-	handler := NewHandlerWithConfig(
+	handler := newTestHandlerWithConfig(t,
 		fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 		Config{
 			SettingsDBPath:          dbPath,

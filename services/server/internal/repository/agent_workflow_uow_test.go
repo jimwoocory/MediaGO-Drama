@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestAgentExecutionWorkflowEnvelopeCASAllowsOneActiveWorkflow(t *testing.T) {
@@ -17,6 +18,7 @@ func TestAgentExecutionWorkflowEnvelopeCASAllowsOneActiveWorkflow(t *testing.T) 
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	projectID := "project-envelope-cas"
 	sessionID := "session-envelope-cas"
 	seedRepositoryProject(t, db, projectID)
@@ -99,6 +101,7 @@ func TestAgentExecutionWorkflowEnvelopeReplayReturnsFirstResultAfterTermination(
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	projectID := "project-envelope-replay"
 	sessionID := "session-envelope-replay"
 	seedRepositoryProject(t, db, projectID)
@@ -135,6 +138,7 @@ func TestAgentExecutionWorkflowReplaceIsAtomicAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	projectID := "project-replace"
 	sessionID := "session-replace"
 	seedRepositoryProject(t, db, projectID)
@@ -233,6 +237,7 @@ func TestAgentExecutionWorkflowTerminateIsAtomicAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	projectID := "project-terminate"
 	sessionID := "session-terminate"
 	workflowID := "workflow-terminate"

@@ -2,7 +2,6 @@ package acp
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -68,11 +67,9 @@ func (client *acpClient) SessionUpdate(_ context.Context, params acp.SessionNoti
 		toolName := CanonicalACPToolName(toolKind, update.ToolCall.Title)
 		rawInput := MarshalACPRawMessage(update.ToolCall.RawInput)
 		rawOutput := MarshalACPRawMessage(update.ToolCall.RawOutput)
-		if decision := client.observeToolLoopGuard(string(update.ToolCall.ToolCallId), toolKind, toolName, rawInput); decision.ForceFinalize {
-			client.finishThoughts()
-			client.publishEvent(agentEvent{Type: "agent.activity", Message: "工具安全保护触发：" + decision.Reason})
-			return fmt.Errorf("force finalize: %s", decision.Reason)
-		}
+		// Native tools and Skills may legitimately execute many batches or
+		// repeat inputs against changing files. Notifications are observations,
+		// not evidence of a loop and not a pre-execution permission boundary.
 		acpLog().Debug(
 			"acp session update",
 			client.logAttrs(

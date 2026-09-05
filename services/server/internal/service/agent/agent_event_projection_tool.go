@@ -92,19 +92,57 @@ func nonTerminalProjectedRunStatus(status string) string {
 	return status
 }
 
-func findProjectedCurrentTurnPlanIndex(messages []AgentChatMessageRecord) int {
+func findProjectedCurrentTurnPlanIndex(messages []AgentChatMessageRecord, event AgentEvent) int {
 	lastUserIndex := -1
 	for index, message := range messages {
 		if message.Role == "user" {
 			lastUserIndex = index
 		}
 	}
-	for index := len(messages) - 1; index > lastUserIndex; index-- {
-		if messages[index].Kind == "plan" {
-			return index
+	turnID := firstNonEmpty(event.TurnID, event.RunID)
+	for index := len(messages) - 1; index >= 0; index-- {
+		message := messages[index]
+		if message.Kind != "plan" {
+			continue
 		}
+		if message.TurnID != "" && turnID != "" {
+			if message.TurnID != turnID {
+				continue
+			}
+		} else if index <= lastUserIndex || (lastUserIndex >= 0 && messages[lastUserIndex].TurnID != "" && messages[lastUserIndex].TurnID != turnID) {
+			continue
+		}
+		if event.ItemID != "" && message.ItemID != event.ItemID && message.ID != event.ItemID {
+			continue
+		}
+		return index
 	}
 	return -1
+}
+
+func projectedPlanToolStates(messages []AgentChatMessageRecord, turnID string) map[string]string {
+	states := make(map[string]string)
+	lastUserIndex := -1
+	for index, message := range messages {
+		if message.Role == "user" {
+			lastUserIndex = index
+		}
+	}
+	for index, message := range messages {
+		if message.Kind != "tool" {
+			continue
+		}
+		if message.TurnID != "" {
+			if message.TurnID != turnID {
+				continue
+			}
+		} else if index <= lastUserIndex || (lastUserIndex >= 0 && messages[lastUserIndex].TurnID != "" && messages[lastUserIndex].TurnID != turnID) {
+			continue
+		}
+		id := firstNonEmpty(metadataString(message.Metadata, "toolCallId"), message.ItemID, message.ID)
+		states[id] = firstNonEmpty(metadataString(message.Metadata, "status"), "pending")
+	}
+	return states
 }
 
 func firstNonEmpty(values ...string) string {

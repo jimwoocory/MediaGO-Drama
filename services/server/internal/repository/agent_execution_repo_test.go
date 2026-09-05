@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func newAgentExecutionRepositoryTest(t *testing.T) (*AgentExecutionRepository, string, string) {
@@ -18,6 +19,7 @@ func newAgentExecutionRepositoryTest(t *testing.T) (*AgentExecutionRepository, s
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	projectID := "project-agent-execution"
 	sessionID := "session-agent-execution"
 	seedRepositoryProject(t, db, projectID)

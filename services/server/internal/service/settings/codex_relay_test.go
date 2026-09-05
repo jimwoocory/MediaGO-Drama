@@ -133,6 +133,9 @@ func TestPrepareCodexRelayRuntimeConfigWritesLocalCodexHomeWithoutSecret(t *test
 	if config.Env["OPENAI_API_KEY"] == "sk-real-secret" {
 		t.Fatalf("OPENAI_API_KEY should not contain upstream secret")
 	}
+	if config.Env[codexRelayLocalTokenEnv] != codexRelayLocalBearerToken {
+		t.Fatalf("config = %#v, want loopback relay token env", config)
+	}
 	configText := readTextFile(t, filepath.Join(wantHome, "config.toml"))
 	if strings.Contains(configText, "sk-real-secret") {
 		t.Fatalf("config.toml leaks secret:\n%s", configText)
@@ -141,6 +144,8 @@ func TestPrepareCodexRelayRuntimeConfigWritesLocalCodexHomeWithoutSecret(t *test
 		`model = "gpt-5.6-sol"`,
 		`model_provider = "mediago-codex-relay"`,
 		`base_url = "http://127.0.0.1:8080/api/v1/codex-relay/v1"`,
+		`requires_openai_auth = false`,
+		`env_key = "MEDIAGO_CODEX_RELAY_TOKEN"`,
 	} {
 		if !strings.Contains(configText, want) {
 			t.Fatalf("config.toml missing %q:\n%s", want, configText)
@@ -149,6 +154,82 @@ func TestPrepareCodexRelayRuntimeConfigWritesLocalCodexHomeWithoutSecret(t *test
 	authText := readTextFile(t, filepath.Join(wantHome, "auth.json"))
 	if strings.Contains(authText, "sk-real-secret") {
 		t.Fatalf("auth.json leaks secret: %s", authText)
+	}
+	if strings.Contains(configText, "experimental_bearer_token") {
+		t.Fatalf("config.toml should use env_key instead of an inline token:\n%s", configText)
+	}
+}
+
+func TestPrepareCodexRelayRuntimeConfigFallsBackToUnifiedOpenAICompatibleGateway(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/models" {
+			http.NotFound(writer, request)
+			return
+		}
+		if request.Header.Get("Authorization") != "Bearer sk-unified-secret" {
+			t.Fatalf("authorization = %q, want unified API key", request.Header.Get("Authorization"))
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(writer, `{"data":[{"id":"image-generator"},{"id":"qwen-max"},{"id":"gpt-5.6-codex"}]}`)
+	}))
+	defer upstream.Close()
+
+	service := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{agentModelProviderAIHubMix: "sk-unified-secret"}},
+		nil,
+		&memoryAppSettingStore{values: map[string]string{
+			aihubmixBaseURLSettingKey: upstream.URL + "/v1",
+		}},
+	)
+	workspaceDir := t.TempDir()
+	config, err := service.PrepareCodexRelayRuntimeConfig(
+		context.Background(),
+		workspaceDir,
+		"http://127.0.0.1:8080/api/v1/codex-relay",
+	)
+	if err != nil {
+		t.Fatalf("PrepareCodexRelayRuntimeConfig returned error: %v", err)
+	}
+	if !config.Configured || config.Env["CODEX_HOME"] == "" {
+		t.Fatalf("config = %#v, want configured isolated Codex home", config)
+	}
+	configText := readTextFile(t, filepath.Join(config.CodexHome, "config.toml"))
+	if !strings.Contains(configText, `model = "gpt-5.6-codex"`) {
+		t.Fatalf("config.toml = %s, want preferred tool-capable Codex model", configText)
+	}
+	if strings.Contains(configText, "sk-unified-secret") {
+		t.Fatalf("config.toml leaked unified API key: %s", configText)
+	}
+
+	descriptor, err := service.DescribeCodexRuntimeHome(context.Background(), workspaceDir)
+	if err != nil {
+		t.Fatalf("DescribeCodexRuntimeHome returned error: %v", err)
+	}
+	if !descriptor.Isolated || descriptor.CodexHome != config.CodexHome {
+		t.Fatalf("descriptor = %#v, want unified gateway runtime home", descriptor)
+	}
+}
+
+func TestPreferredUnifiedCodexModelSkipsMediaAndPrefersCodex(t *testing.T) {
+	models := []openAIModelListItem{
+		{ID: "video-generator"},
+		{ID: "qwen-max"},
+		{ID: "gpt-5.6-codex"},
+		{ID: "claude-sonnet"},
+	}
+	if got := preferredUnifiedCodexModel(models); got != "gpt-5.6-codex" {
+		t.Fatalf("preferred model = %q, want gpt-5.6-codex", got)
+	}
+}
+
+func TestPreferredUnifiedCodexModelPrefersStableDeepSeekRouteOverUnavailableAliases(t *testing.T) {
+	models := []openAIModelListItem{
+		{ID: "deepseek-v4-pro"},
+		{ID: "qwen3.7-plus"},
+		{ID: "DeepSeek-V3.2"},
+	}
+	if got := preferredUnifiedCodexModel(models); got != "DeepSeek-V3.2" {
+		t.Fatalf("preferred model = %q, want stable DeepSeek tool route", got)
 	}
 }
 
@@ -377,7 +458,7 @@ func TestCheckCodexRelayAuthenticatesUpstream(t *testing.T) {
 	}
 }
 
-func TestCheckCodexRelayKeepsConnectivitySuccessWhenModelCatalogIsMalformed(t *testing.T) {
+func TestCheckCodexRelayRejectsMalformedModelCatalog(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(writer, `{"data":`)
@@ -409,11 +490,46 @@ func TestCheckCodexRelayKeepsConnectivitySuccessWhenModelCatalogIsMalformed(t *t
 	}
 
 	result, err := service.CheckCodexRelay(ctx, CodexRelayCheckRequest{})
-	if err != nil {
-		t.Fatalf("CheckCodexRelay returned error: %v", err)
+	if !errors.Is(err, ErrCodexRelayCheckFailed) {
+		t.Fatalf("CheckCodexRelay error = %v, want ErrCodexRelayCheckFailed", err)
 	}
-	if !result.OK || result.StatusCode != http.StatusOK || len(result.Models) != 0 {
-		t.Fatalf("result = %#v, want successful check with no parsed models", result)
+	if result.OK || result.StatusCode != http.StatusOK {
+		t.Fatalf("result = %#v, want failed malformed-catalog check", result)
+	}
+}
+
+func TestCheckCodexRelayRejectsHTMLSuccessPage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(writer, `<!doctype html><html><body>provider website</body></html>`)
+	}))
+	defer server.Close()
+
+	service := NewSettingsWithStores(
+		&memoryAPIKeyStore{values: map[string]string{}},
+		nil,
+		&memoryAppSettingStore{values: map[string]string{}},
+	)
+	ctx := context.Background()
+	if _, err := service.SaveCodexRelaySettings(ctx, CodexRelaySettingsMutation{
+		Enabled: true, ActiveProfileID: "relay",
+		Profiles: []CodexRelayProfileMutation{{
+			ID: "relay", Name: "Relay", BaseURL: server.URL + "/v1",
+			Model: "DeepSeek-V3.2", Protocol: CodexRelayProtocolAuto, Enabled: true,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveCodexRelaySettings returned error: %v", err)
+	}
+	if _, err := service.SetCodexRelayProfileAPIKey(ctx, "relay", "sk-test"); err != nil {
+		t.Fatalf("SetCodexRelayProfileAPIKey returned error: %v", err)
+	}
+
+	result, err := service.CheckCodexRelay(ctx, CodexRelayCheckRequest{})
+	if !errors.Is(err, ErrCodexRelayCheckFailed) {
+		t.Fatalf("CheckCodexRelay error = %v, want ErrCodexRelayCheckFailed", err)
+	}
+	if result.OK {
+		t.Fatalf("result = %#v, HTML page must not be accepted as an API response", result)
 	}
 }
 

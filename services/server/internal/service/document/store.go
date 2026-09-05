@@ -15,6 +15,12 @@ import (
 )
 
 func (store *Service) saveUnlocked(projectID string, request workspaceStateRequest) (workspaceStateResponse, error) {
+	return store.saveWithProjectionUnlocked(projectID, request, false)
+}
+
+// Background anchor reconciliation must not rename paths used by native writers.
+// Explicit document mutations keep the existing title-based projection behavior.
+func (store *Service) saveWithProjectionUnlocked(projectID string, request workspaceStateRequest, preserveFilenames bool) (workspaceStateResponse, error) {
 	projectID = domain.CleanProjectID(projectID)
 	rawDocuments := request.Documents
 	documents := NormalizeWorkspaceDocuments(request.Documents)
@@ -44,7 +50,18 @@ func (store *Service) saveUnlocked(projectID string, request workspaceStateReque
 			usedFilenames = map[string]bool{}
 			usedFilenamesByDir[strings.ToLower(folderPath)] = usedFilenames
 		}
-		filename := documentProjectionFilename(document, filenameDocument, usedFilenames)
+		filename := ""
+		if preserveFilenames && strings.TrimSpace(document.Filename) != "" {
+			candidate := filepath.Base(CleanRelativeFilename(document.Filename))
+			key := strings.ToLower(candidate)
+			if isLocalDocumentFile(candidate) && !usedFilenames[key] {
+				filename = candidate
+				usedFilenames[key] = true
+			}
+		}
+		if filename == "" {
+			filename = documentProjectionFilename(document, filenameDocument, usedFilenames)
+		}
 		if folderPath != "" {
 			filename = filepath.ToSlash(filepath.Join(folderPath, filename))
 		}

@@ -226,7 +226,7 @@ func (service *Service) scan(ctx context.Context) (inventoryScan, error) {
 					Message: "MediaGo Codex 运行时目录无效。",
 				})
 			} else {
-				runtimeIsolated = comparablePath(runtimeHome) != comparablePath(hostCodexHome)
+				runtimeIsolated = !descriptor.SharesHostSkills && comparablePath(runtimeHome) != comparablePath(hostCodexHome)
 			}
 		}
 	}

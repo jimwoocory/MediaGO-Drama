@@ -9,6 +9,7 @@ import {
 	getAIHubMixSettings,
 	getAPIKeys,
 	getModelPlatforms,
+	getSpeechAPISettings,
 	getVideoAPISettings,
 	saveAIHubMixSettings,
 	saveAPIKey,
@@ -27,6 +28,7 @@ import { Settings } from "./Settings";
 const swrMocks = vi.hoisted(() => ({
 	mutate: vi.fn(),
 }));
+const toastMocks = vi.hoisted(() => ({ error: vi.fn() }));
 
 vi.mock("swr", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("swr")>();
@@ -47,6 +49,7 @@ vi.mock("@/domains/settings/api/settings", async (importOriginal) => {
 		getAPIKeys: vi.fn(),
 		getJianyingDraftSettings: vi.fn(),
 		getModelPlatforms: vi.fn(),
+		getSpeechAPISettings: vi.fn(),
 		getVideoAPISettings: vi.fn(),
 		saveAIHubMixSettings: vi.fn(),
 		saveAPIKey: vi.fn(),
@@ -57,7 +60,7 @@ vi.mock("@/domains/settings/api/settings", async (importOriginal) => {
 
 vi.mock("@/hooks/useToast", () => ({
 	useToast: () => ({
-		error: vi.fn(),
+		error: toastMocks.error,
 		info: vi.fn(),
 		success: vi.fn(),
 		warning: vi.fn(),
@@ -74,12 +77,37 @@ vi.mock("@/shared/desktop/actions", () => ({
 }));
 
 describe("Settings API key page", () => {
+	it("shows the server validation reason and keeps the configuration dialog open", async () => {
+		vi.mocked(saveAIHubMixSettings).mockRejectedValueOnce({
+			code: 400,
+			message: "Base URL path ends with /vl; use /v1 (number 1)",
+		});
+		renderSettings();
+		fireEvent.click(await screen.findByRole("button", { name: "编辑 第三方" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 第三方" });
+		fireEvent.change(within(dialog).getByLabelText("第三方 Base URL"), {
+			target: { value: "https://tokease.cn/vl" },
+		});
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+		await waitFor(() =>
+			expect(toastMocks.error).toHaveBeenCalledWith("保存失败", {
+				description: expect.stringContaining("number 1"),
+			}),
+		);
+		expect(dialog).toBeInTheDocument();
+		expect(saveAPIKey).not.toHaveBeenCalled();
+	});
 	beforeEach(() => {
 		vi.clearAllMocks();
 		useSettingsNavigationStore.setState({ activeTab: "api-keys" });
 		vi.mocked(getAIHubMixSettings).mockResolvedValue({ baseURL: "https://aihubmix.com/v1" });
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({}));
 		vi.mocked(getModelPlatforms).mockResolvedValue(modelPlatformsResponse());
+		vi.mocked(getSpeechAPISettings).mockResolvedValue({
+			baseURL: "",
+			model: "gpt-4o-mini-tts",
+			voice: "alloy",
+		});
 		vi.mocked(getVideoAPISettings).mockResolvedValue({ baseURL: "", model: "" });
 		vi.mocked(saveVideoAPISettings).mockResolvedValue({
 			baseURL: "https://video.example.test/v1",
@@ -93,24 +121,31 @@ describe("Settings API key page", () => {
 		cleanup();
 	});
 
-	it("shows the Provider framework with AIHubMix as the unified default", async () => {
+	it("shows purpose-specific interfaces without a duplicate capability matrix", async () => {
 		renderSettings();
 
-		expect(await screen.findByRole("heading", { name: "模型提供方与能力" })).toBeInTheDocument();
-		expect(screen.getByText("Codex")).toBeInTheDocument();
-		expect(screen.getByText("ChatGPT OAuth")).toBeInTheDocument();
-		expect(screen.getByText("后台备用")).toBeInTheDocument();
-		expect(screen.getByRole("heading", { name: "统一接口（第三方）" })).toBeInTheDocument();
-		expect(screen.getByText(/统一 API 默认使用第三方接口/)).toBeInTheDocument();
+		const unifiedHeading = await screen.findByRole("heading", { name: "统一接口（第三方）" });
+		const speechHeading = screen.getByRole("heading", {
+			name: "音频接口（第三方 Speech API）",
+		});
+		const videoHeading = screen.getByRole("heading", {
+			name: "视频接口（第三方 Video API）",
+		});
+		expect(screen.queryByRole("heading", { name: "模型提供方与能力" })).not.toBeInTheDocument();
+		expect(unifiedHeading).toBeInTheDocument();
+		expect(
+			speechHeading.compareDocumentPosition(videoHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		expect(screen.getByText(/自动分配到 Agent、图片、音频和视频工作台/)).toBeInTheDocument();
+		expect(screen.getByText(/无需即梦授权/)).toBeInTheDocument();
 	});
-	it("keeps the capability matrix independent from credential rows", async () => {
+	it("shows a configured credential only on its actual settings row", async () => {
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ aihubmixConfigured: true }));
 
 		renderSettings();
 
-		expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
-		expect(screen.getByText(/已真实接入的能力/)).toBeInTheDocument();
-		expect(screen.getByText("sk••••••456")).toBeInTheDocument();
+		expect(await screen.findByText("sk••••••456")).toBeInTheDocument();
+		expect(screen.queryByText(/已真实接入的能力/)).not.toBeInTheDocument();
 	});
 	it("loads 第三方 Base URL in its independent configuration dialog", async () => {
 		vi.mocked(getAIHubMixSettings).mockResolvedValue({
@@ -129,19 +164,22 @@ describe("Settings API key page", () => {
 	it("does not mark unconfigured third-party providers as configured", async () => {
 		renderSettings();
 
-		expect(await screen.findByText("Codex")).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "统一接口（第三方）" })).toBeInTheDocument();
 		expect(screen.queryByText("凭据已配置")).not.toBeInTheDocument();
 		expect(screen.getAllByText("第三方").length).toBeGreaterThan(0);
-		expect(screen.getByText("DeepSeek")).toBeInTheDocument();
 	});
-	it("keeps the Provider framework visible when the model-platform allowlist is empty", async () => {
+	it("keeps the actual interfaces visible when the model-platform allowlist is empty", async () => {
 		vi.mocked(getModelPlatforms).mockResolvedValue({ platforms: [] });
 
 		renderSettings();
 
-		expect(await screen.findByRole("heading", { name: "模型提供方与能力" })).toBeInTheDocument();
-		expect(screen.getByText("Codex")).toBeInTheDocument();
-		expect(screen.getAllByText("第三方").length).toBeGreaterThan(0);
+		expect(await screen.findByRole("heading", { name: "统一接口（第三方）" })).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "音频接口（第三方 Speech API）" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "视频接口（第三方 Video API）" }),
+		).toBeInTheDocument();
 	});
 	it("keeps other providers collapsed by default even when one is configured", async () => {
 		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ openrouterConfigured: true }));
@@ -598,6 +636,17 @@ const apiKeysResponse = ({
 			capabilities: ["video"],
 		},
 		{
+			id: "speechapi",
+			label: "第三方 Speech API",
+			description: "第三方文本转语音接口",
+			configured: false,
+			source: "none",
+			credentialKind: "apiKey",
+			credentialLabel: "Speech API Key",
+			placeholder: "输入 Speech API Key",
+			capabilities: ["audio"],
+		},
+		{
 			id: "volcengine",
 			label: "火山引擎",
 			description: "官方供应商",
@@ -671,7 +720,10 @@ const libTVLoginResponse = (login: APIKeyLoginChallenge, configured = false) => 
 });
 
 const expectModelDependentCachesRevalidated = () => {
-	expect(swrMocks.mutate).toHaveBeenCalledTimes(2);
+	expect(swrMocks.mutate).toHaveBeenCalledTimes(3);
+	expect(swrMocks.mutate).toHaveBeenCalledWith("/settings/unified-models", undefined, {
+		revalidate: true,
+	});
 	expect(swrMocks.mutate).toHaveBeenCalledWith(generationModelsKey, undefined, {
 		revalidate: true,
 	});

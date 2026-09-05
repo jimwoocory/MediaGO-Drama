@@ -3,6 +3,7 @@ package settings
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,19 +14,21 @@ import (
 )
 
 type codexResponsesRequest struct {
-	Model             string            `json:"model"`
-	Instructions      string            `json:"instructions,omitempty"`
-	Input             json.RawMessage   `json:"input"`
-	Tools             []json.RawMessage `json:"tools,omitempty"`
-	ToolChoice        json.RawMessage   `json:"tool_choice,omitempty"`
-	ParallelToolCalls *bool             `json:"parallel_tool_calls,omitempty"`
-	Temperature       *float64          `json:"temperature,omitempty"`
-	TopP              *float64          `json:"top_p,omitempty"`
-	MaxOutputTokens   *int              `json:"max_output_tokens,omitempty"`
-	Stream            bool              `json:"stream,omitempty"`
+	Reasoning         *codexRequestReasoning `json:"reasoning,omitempty"`
+	Model             string                 `json:"model"`
+	Instructions      string                 `json:"instructions,omitempty"`
+	Input             json.RawMessage        `json:"input"`
+	Tools             []json.RawMessage      `json:"tools,omitempty"`
+	ToolChoice        json.RawMessage        `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool                  `json:"parallel_tool_calls,omitempty"`
+	Temperature       *float64               `json:"temperature,omitempty"`
+	TopP              *float64               `json:"top_p,omitempty"`
+	MaxOutputTokens   *int                   `json:"max_output_tokens,omitempty"`
+	Stream            bool                   `json:"stream,omitempty"`
 }
 
 type codexChatRequest struct {
+	ReasoningEffort   string             `json:"reasoning_effort,omitempty"`
 	Model             string             `json:"model"`
 	Messages          []codexChatMessage `json:"messages"`
 	Tools             []codexChatTool    `json:"tools,omitempty"`
@@ -35,6 +38,10 @@ type codexChatRequest struct {
 	TopP              *float64           `json:"top_p,omitempty"`
 	MaxTokens         *int               `json:"max_tokens,omitempty"`
 	Stream            bool               `json:"stream"`
+}
+
+type codexRequestReasoning struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 type codexChatMessage struct {
@@ -120,6 +127,9 @@ func codexRelayResponsesToChatRequest(body []byte, fallbackModel string) ([]byte
 		MaxTokens:         source.MaxOutputTokens,
 		Stream:            false,
 	}
+	if source.Reasoning != nil {
+		payload.ReasoningEffort = strings.TrimSpace(source.Reasoning.Effort)
+	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return nil, false, fmt.Errorf("encoding Chat Completions request: %w", err)
@@ -148,7 +158,7 @@ func codexResponsesInputToChatMessages(instructions string, raw json.RawMessage)
 		typeName := stringMapValue(item, "type")
 		switch typeName {
 		case "message", "":
-			role := stringMapValue(item, "role")
+			role := normalizeCodexChatRole(stringMapValue(item, "role"))
 			if role == "" {
 				role = "user"
 			}
@@ -162,7 +172,7 @@ func codexResponsesInputToChatMessages(instructions string, raw json.RawMessage)
 					ID:   callID,
 					Type: "function",
 					Function: codexChatFunctionCall{
-						Name:      stringMapValue(item, "name"),
+						Name:      codexChatToolName(stringMapValue(item, "namespace"), stringMapValue(item, "name")),
 						Arguments: firstNonEmpty(stringMapValue(item, "arguments"), "{}"),
 					},
 				}},
@@ -180,6 +190,18 @@ func codexResponsesInputToChatMessages(instructions string, raw json.RawMessage)
 		}
 	}
 	return messages, nil
+}
+
+func normalizeCodexChatRole(role string) string {
+	role = strings.ToLower(strings.TrimSpace(role))
+	// The current OpenAI API accepts developer messages, while a number of
+	// OpenAI-compatible gateways (including Tokease) still implement the older
+	// Chat Completions role set. Developer instructions are semantically closest
+	// to system instructions, so this downgrade preserves intent and tool use.
+	if role == "developer" {
+		return "system"
+	}
+	return role
 }
 
 func codexResponsesContentToChat(value any) any {
@@ -224,11 +246,44 @@ func codexResponsesContentToChat(value any) any {
 }
 
 func codexResponsesToolsToChat(rawTools []json.RawMessage) ([]codexChatTool, error) {
+	tools, err := codexResponsesToolsToChatInNamespace(rawTools, "")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, tool := range tools {
+		if seen[tool.Function.Name] {
+			return nil, fmt.Errorf("%w: ambiguous flattened tool name %q", ErrCodexRelayInvalid, tool.Function.Name)
+		}
+		seen[tool.Function.Name] = true
+	}
+	return tools, nil
+}
+
+func codexResponsesToolsToChatInNamespace(rawTools []json.RawMessage, namespace string) ([]codexChatTool, error) {
 	tools := make([]codexChatTool, 0, len(rawTools))
 	for _, raw := range rawTools {
 		var item map[string]any
 		if err := json.Unmarshal(raw, &item); err != nil {
 			return nil, fmt.Errorf("%w: invalid tool definition", ErrCodexRelayInvalid)
+		}
+		if stringMapValue(item, "type") == "namespace" {
+			var group struct {
+				Name  string            `json:"name"`
+				Tools []json.RawMessage `json:"tools"`
+			}
+			if err := json.Unmarshal(raw, &group); err != nil {
+				return nil, err
+			}
+			if group.Name == "" || namespace != "" {
+				return nil, fmt.Errorf("%w: invalid tool namespace", ErrCodexRelayInvalid)
+			}
+			children, err := codexResponsesToolsToChatInNamespace(group.Tools, group.Name)
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, children...)
+			continue
 		}
 		if stringMapValue(item, "type") != "function" {
 			continue
@@ -244,13 +299,50 @@ func codexResponsesToolsToChat(rawTools []json.RawMessage) ([]codexChatTool, err
 			return nil, fmt.Errorf("%w: function tool name is required", ErrCodexRelayInvalid)
 		}
 		tool := codexChatTool{Type: "function", Function: codexChatToolFunction{
-			Name:        name,
+			Name:        codexChatToolName(namespace, name),
 			Description: stringMapValue(item, "description"),
 			Parameters:  codexOpenAICompatibleToolParameters(item["parameters"]),
 		}}
 		tools = append(tools, tool)
 	}
 	return tools, nil
+}
+
+func codexChatToolName(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+	flattened := namespace + "__" + name
+	if len(flattened) <= 64 {
+		return flattened
+	}
+	hash := sha256.Sum256([]byte(namespace + "\x00" + name))
+	return fmt.Sprintf("jw_tool_%x", hash[:20])
+}
+
+type codexToolIdentity struct {
+	Namespace string
+	Name      string
+}
+
+func codexNamespaceTools(rawTools []json.RawMessage) map[string]codexToolIdentity {
+	result := map[string]codexToolIdentity{}
+	for _, raw := range rawTools {
+		var group struct {
+			Type  string `json:"type"`
+			Name  string `json:"name"`
+			Tools []struct {
+				Name string `json:"name"`
+			} `json:"tools"`
+		}
+		if json.Unmarshal(raw, &group) != nil || group.Type != "namespace" {
+			continue
+		}
+		for _, tool := range group.Tools {
+			result[codexChatToolName(group.Name, tool.Name)] = codexToolIdentity{Namespace: group.Name, Name: tool.Name}
+		}
+	}
+	return result
 }
 
 func codexOpenAICompatibleToolParameters(value any) map[string]any {
@@ -324,13 +416,13 @@ func codexResponsesToolChoiceToChat(raw json.RawMessage) (any, error) {
 			}
 		}
 		if name != "" {
-			return map[string]any{"type": "function", "function": map[string]any{"name": name}}, nil
+			return map[string]any{"type": "function", "function": map[string]any{"name": codexChatToolName(stringMapValue(object, "namespace"), name)}}, nil
 		}
 	}
 	return nil, nil
 }
 
-func codexRelayChatResponseToResponses(upstream *http.Response, stream bool) (*http.Response, error) {
+func codexRelayChatResponseToResponses(upstream *http.Response, stream bool, sourceTools ...[]json.RawMessage) (*http.Response, error) {
 	if upstream == nil {
 		return nil, fmt.Errorf("empty Chat Completions response")
 	}
@@ -347,6 +439,19 @@ func codexRelayChatResponseToResponses(upstream *http.Response, stream bool) (*h
 		return nil, fmt.Errorf("decoding Chat Completions response: %w", err)
 	}
 	response := codexChatToResponsesObject(chat)
+	if len(sourceTools) > 0 {
+		identities := codexNamespaceTools(sourceTools[0])
+		output, _ := response["output"].([]map[string]any)
+		for _, item := range output {
+			if item["type"] != "function_call" {
+				continue
+			}
+			if identity, ok := identities[stringMapValue(item, "name")]; ok {
+				item["name"] = identity.Name
+				item["namespace"] = identity.Namespace
+			}
+		}
+	}
 	var encoded []byte
 	contentType := "application/json"
 	if stream {

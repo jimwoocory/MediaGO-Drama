@@ -209,6 +209,10 @@ const formatGenerationTime = (value?: string) => {
 
 export const providerLabel = (provider: string) => {
 	switch (provider) {
+		case "aihubmix":
+			return "统一接口";
+		case "codex-image":
+			return "Codex · ChatGPT 订阅";
 		case "openai":
 			return "OpenAI";
 		case "google":

@@ -6,6 +6,7 @@ import (
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestStorePersistsDocumentToolApprovalPayload(t *testing.T) {
@@ -13,6 +14,7 @@ func TestStorePersistsDocumentToolApprovalPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening workspace db: %v", err)
 	}
+	testutil.CloseDB(t, db)
 	store := NewService(repository.NewDocumentToolApprovalRepository(db), nil)
 	projectID := "project-approval"
 	now := domain.TimeFromString("2026-06-01T00:00:00Z")

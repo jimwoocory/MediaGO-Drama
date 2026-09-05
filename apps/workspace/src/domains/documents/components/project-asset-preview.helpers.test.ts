@@ -15,7 +15,10 @@ const clearDesktopRuntime = () => {
 };
 
 const enableDesktopRuntime = () => {
-	window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+	window.mediagoDesktop = {
+		isElectron: true,
+		sidecarOrigin: "http://127.0.0.1:48273",
+	} as typeof window.mediagoDesktop;
 };
 
 describe("project asset preview helpers", () => {

@@ -90,7 +90,7 @@ describe("generation workbench HTTP boundaries", () => {
 
 		await getGenerationModels();
 
-		expect(httpClient.get).toHaveBeenCalledWith("/generation/models");
+		expect(httpClient.get).toHaveBeenCalledWith("/generation/models", { timeout: 45_000 });
 	});
 
 	it("keeps project task queries outside the Agent MCP", async () => {

@@ -122,10 +122,10 @@ func (store *Service) reconcileProjectSectionsUnlocked(projectID string, state w
 	nextDocuments, changed := ensureWorkspaceSectionAnchors(state.Documents, now)
 	if changed {
 		state.Documents = nextDocuments
-		savedState, err := store.saveUnlocked(projectID, workspaceStateRequest{
+		savedState, err := store.saveWithProjectionUnlocked(projectID, workspaceStateRequest{
 			Documents:    state.Documents,
 			OperationLog: state.OperationLog,
-		})
+		}, true)
 		if err != nil {
 			return DocumentSectionsResponse{}, err
 		}

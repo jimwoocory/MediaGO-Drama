@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -27,11 +28,20 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	pool, err := repos.DB.DB()
+	if err != nil {
+		panic(err)
+	}
 	store := promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, nil)
 	serviceprompt.SetPromptTemplateStore(prompttemplates.NewServiceFromRepository(repos.Instructions, nil))
 	serviceskill.SetPromptPackStore(store)
 	code := m.Run()
-	_ = os.RemoveAll(dir)
+	if err := pool.Close(); err != nil {
+		code = 1
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		code = 1
+	}
 	os.Exit(code)
 }
 
@@ -220,7 +230,7 @@ func TestACPAgentRunnerPrepareProcessConfigForManagedACPBackends(t *testing.T) {
 	if provider.requests[0].PreferredModel != "mediago/deepseek-v4-flash" {
 		t.Fatalf("preferred model = %q, want selected runtime model", provider.requests[0].PreferredModel)
 	}
-	if provider.requests[0].FixedInstructions != "固定系统提示" {
+	if provider.requests[0].FixedInstructions != "固定系统提示\n\n"+acpPlanProgressInstructions {
 		t.Fatalf("fixed instructions = %q, want rendered runtime instructions", provider.requests[0].FixedInstructions)
 	}
 	if !config.NativeInstructionsInjected {
@@ -366,19 +376,28 @@ func TestMergedProcessEnvBypassesProxiesForLoopback(t *testing.T) {
 
 	env := mergedProcessEnv(ProcessConfig{})
 
-	for _, test := range []struct {
-		name string
-		want []string
-	}{
-		{name: "NO_PROXY", want: []string{"internal.example", "127.0.0.1", "localhost", "::1"}},
-		{name: "no_proxy", want: []string{"localhost", "legacy.example", "127.0.0.1", "::1"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got := strings.Split(envValue(env, test.name), ",")
-			if strings.Join(got, ",") != strings.Join(test.want, ",") {
-				t.Fatalf("%s = %q, want %q", test.name, got, test.want)
+	want := "internal.example,localhost,legacy.example,127.0.0.1,::1"
+	if runtime.GOOS == "windows" {
+		// Windows environment keys are case-insensitive: the second Setenv
+		// replaces the first. Both spellings emitted to the child must agree.
+		want = "localhost,legacy.example,127.0.0.1,::1"
+	}
+	for _, name := range []string{"NO_PROXY", "no_proxy"} {
+		t.Run(name, func(t *testing.T) {
+			if got := envValue(env, name); got != want {
+				t.Fatalf("%s = %q, want %q", name, got, want)
 			}
 		})
+	}
+}
+
+func TestLoopbackProxyBypassMergesBothSpellings(t *testing.T) {
+	env := map[string]string{"NO_PROXY": "internal.example", "no_proxy": "localhost,legacy.example"}
+	applyLoopbackProxyBypass(env)
+	for _, name := range []string{"NO_PROXY", "no_proxy"} {
+		if got, want := env[name], "internal.example,localhost,legacy.example,127.0.0.1,::1"; got != want {
+			t.Fatalf("%s = %q, want %q", name, got, want)
+		}
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 	"gorm.io/gorm"
 )
 
@@ -17,6 +18,7 @@ func TestOpenWorkspaceDBMigratesWorkspaceSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB returned error: %v", err)
 	}
+	testutil.CloseDB(t, db)
 
 	models := []any{
 		&domain.WorkspaceProjectModel{},
@@ -73,10 +75,12 @@ func TestOpenGormSQLiteCachesByPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenGormSQLite first call returned error: %v", err)
 	}
+	testutil.CloseDB(t, first)
 	second, err := OpenGormSQLite(dbPath)
 	if err != nil {
 		t.Fatalf("OpenGormSQLite second call returned error: %v", err)
 	}
+	testutil.CloseDB(t, second)
 	if first != second {
 		t.Fatal("OpenGormSQLite returned different DB handles for the same path")
 	}
@@ -87,6 +91,7 @@ func TestOpenGormSQLiteConfiguresLocalPragmas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenGormSQLite returned error: %v", err)
 	}
+	testutil.CloseDB(t, db)
 
 	var journalMode string
 	if err := db.Raw("PRAGMA journal_mode").Scan(&journalMode).Error; err != nil {
@@ -126,6 +131,7 @@ func TestOpenGormSQLiteRestrictsDatabaseFilePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenGormSQLite returned error: %v", err)
 	}
+	testutil.CloseDB(t, db)
 	if err := db.Exec("CREATE TABLE permission_probe (id INTEGER PRIMARY KEY)").Error; err != nil {
 		t.Fatalf("creating permission probe: %v", err)
 	}
@@ -159,6 +165,7 @@ func TestOpenWorkspaceRepositoriesBuildsAllWorkspaceRepositories(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories returned error: %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	if repos.DB == nil ||
 		repos.Workspace == nil ||
 		repos.EditStreams == nil ||
@@ -182,6 +189,7 @@ func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T)
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories returned error: %v", err)
 	}
+	testutil.CloseDB(t, repos.DB)
 	if repos.DB == nil ||
 		repos.APIKeys == nil ||
 		repos.AgentModelProfiles == nil ||
@@ -244,6 +252,7 @@ func TestWorkspaceSchemaCascadesProjectOwnedRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB returned error: %v", err)
 	}
+	testutil.CloseDB(t, db)
 
 	now := domain.TimeFromString("2026-06-21T00:00:00Z")
 	projectID := "project-cascade"
@@ -418,6 +427,7 @@ func TestEnsureWorkspaceSchemaUsesNormalizedGenerationTaskColumns(t *testing.T) 
 	if err != nil {
 		t.Fatalf("OpenGormSQLite returned error: %v", err)
 	}
+	testutil.CloseDB(t, db)
 	if err := EnsureWorkspaceSchema(db); err != nil {
 		t.Fatalf("EnsureWorkspaceSchema returned error: %v", err)
 	}
@@ -461,6 +471,7 @@ func TestEnsureWorkspaceSchemaCreatesAssetsWithoutBase64(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenGormSQLite returned error: %v", err)
 	}
+	testutil.CloseDB(t, db)
 	if err := EnsureWorkspaceSchema(db); err != nil {
 		t.Fatalf("EnsureWorkspaceSchema returned error: %v", err)
 	}

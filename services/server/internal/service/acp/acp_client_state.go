@@ -59,6 +59,31 @@ func (client *acpClient) runtimeErrorText() string {
 	return client.runtimeErrorMessage
 }
 
+// abortPrompt cancels the RPC, not the one-way notification handler. The SDK
+// sends session/cancel; promptACPSession also closes an unresponsive process.
+func (client *acpClient) abortPrompt(reason string) {
+	client.mu.Lock()
+	cancel := client.promptCancel
+	client.mu.Unlock()
+	if cancel != nil {
+		cancel(fmt.Errorf("%s", reason))
+	}
+}
+
+// Native Codex failures can arrive as ordinary message chunks followed by
+// end_turn. Match only the native terminal-error line, not arbitrary 429 prose.
+func nativeACPFinalError(text string) error {
+	for _, line := range strings.Split(strings.TrimSpace(text), "\n") {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "exceeded retry limit, last status:") {
+			if message := friendlyACPProviderErrorMessage(line); message != "" {
+				return fmt.Errorf("%s", message)
+			}
+			return fmt.Errorf("模型请求重试已耗尽，本轮未完成。请检查第三方服务状态后重试。")
+		}
+	}
+	return nil
+}
+
 func (client *acpClient) acceptingSessionUpdates() bool {
 	client.mu.Lock()
 	defer client.mu.Unlock()
@@ -105,19 +130,6 @@ func (client *acpClient) resetMessage() {
 	client.runtimeErrorMessage = ""
 	client.dsmlCarry = ""
 	client.dsmlInside = false
-	client.toolGuard.reset()
-}
-
-func (client *acpClient) observeToolLoopGuard(toolCallID string, toolKind string, title string, rawInput []byte) toolLoopGuardDecision {
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	return client.toolGuard.observe(toolCallID, toolKind, title, rawInput)
-}
-
-func (client *acpClient) toolLoopGuardReason() string {
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	return client.toolGuard.forceFinalizeReason
 }
 
 var dsmlStartTokens = []string{

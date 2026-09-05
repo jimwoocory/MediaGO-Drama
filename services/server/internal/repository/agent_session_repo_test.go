@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestAgentSessionRepositoryLifecycle(t *testing.T) {
@@ -15,6 +16,7 @@ func TestAgentSessionRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	repo := NewAgentSessionRepository(db)
 	if err := db.Create(&domain.WorkspaceProjectModel{
 		ID:          "project-1",
@@ -76,6 +78,7 @@ func TestAgentExecutionSessionUpsertPreservesWorkflowPointersAndRootLease(t *tes
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	seedRepositoryProject(t, db, "project-session-ledger")
 	repo := NewAgentSessionRepository(db)
 	active := "workflow-active"
@@ -122,6 +125,7 @@ func TestAgentExecutionSessionUpsertRejectsCrossProjectMove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	seedRepositoryProject(t, db, "project-session-a")
 	seedRepositoryProject(t, db, "project-session-b")
 	repo := NewAgentSessionRepository(db)

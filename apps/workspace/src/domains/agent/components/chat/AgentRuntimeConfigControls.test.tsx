@@ -4,6 +4,7 @@ import type { AgentRuntimeConfigPayload } from "@/domains/agent/api/agent";
 import {
 	AgentRuntimeConfigControls,
 	getRuntimeConfigError,
+	normalizeRuntimeConfigValue,
 	shouldKeepAgentRuntimeCategoryActive,
 } from "./AgentRuntimeConfigControls";
 
@@ -26,6 +27,7 @@ const renderControls = (
 		errorMessage?: string;
 		isLoading?: boolean;
 		modelValue?: string;
+		reasoningValue?: string;
 		onModelChange?: (value: string) => void;
 		onOpenSettings?: () => void;
 		onRetry?: () => void;
@@ -38,6 +40,7 @@ const runtimeControlsElement = (
 		errorMessage?: string;
 		isLoading?: boolean;
 		modelValue?: string;
+		reasoningValue?: string;
 		onModelChange?: (value: string) => void;
 		onOpenSettings?: () => void;
 		onRetry?: () => void;
@@ -50,7 +53,7 @@ const runtimeControlsElement = (
 		isLoading={options.isLoading ?? false}
 		modelValue={options.modelValue ?? ""}
 		permissionValue=""
-		reasoningValue=""
+		reasoningValue={options.reasoningValue ?? ""}
 		onModelChange={options.onModelChange ?? vi.fn()}
 		onOpenSettings={options.onOpenSettings ?? vi.fn()}
 		onPermissionChange={vi.fn()}
@@ -60,6 +63,80 @@ const runtimeControlsElement = (
 );
 
 describe("AgentRuntimeConfigControls", () => {
+	it("migrates the legacy unified gateway value without changing the model", () => {
+		expect(
+			normalizeRuntimeConfigValue(
+				{
+					options: [
+						{ value: "chatgpt:gpt-5.5", name: "GPT" },
+						{ value: "gateway-aihubmix:DeepSeek-V3.2", name: "DeepSeek" },
+					],
+				},
+				"gateway-openai-compatible:DeepSeek-V3.2",
+			),
+		).toBe("gateway-aihubmix:DeepSeek-V3.2");
+	});
+	it("does not reuse OAuth reasoning options for a third-party model", () => {
+		const config: AgentRuntimeConfigPayload = {
+			...baseConfig,
+			reasoning: {
+				configId: "reasoning_effort",
+				currentValue: "high",
+				options: [{ name: "high", value: "high" }],
+			},
+		};
+		const view = renderControls(config, { modelValue: "gateway-aihubmix:DeepSeek-V3.2" });
+		expect(screen.queryByText("high")).not.toBeInTheDocument();
+		expect(screen.getByLabelText("推理强度")).toHaveTextContent("接口默认");
+		view.rerender(
+			runtimeControlsElement(config, {
+				modelValue: "api-tokease:vendor/model",
+				reasoningValue: "provider:high",
+			}),
+		);
+		expect(screen.getByLabelText("推理强度")).toHaveTextContent("高");
+		view.rerender(runtimeControlsElement(config, { modelValue: "chatgpt:gpt-5.5" }));
+		expect(screen.getByText("high")).toBeInTheDocument();
+	});
+	it("keeps the same opaque model under distinct configured API providers", async () => {
+		const onModelChange = vi.fn();
+		const modelId = "deepseek/DeepSeek-V3.2:fast";
+		renderControls(
+			{
+				model: {
+					configId: "model",
+					options: [
+						{
+							value: `api-tokease:${modelId}`,
+							name: modelId,
+							modelId,
+							providerId: "api-tokease",
+							providerLabel: "Tokease",
+						},
+						{
+							value: `api-openrouter:${modelId}`,
+							name: modelId,
+							modelId,
+							providerId: "api-openrouter",
+							providerLabel: "OpenRouter",
+						},
+						{
+							value: "chatgpt:gpt-5.5",
+							name: "GPT-5.5",
+							modelId: "gpt-5.5",
+							providerId: "chatgpt",
+							providerLabel: "Codex-GPT / ChatGPT OAuth",
+						},
+					],
+				},
+			},
+			{ modelValue: `api-tokease:${modelId}`, onModelChange },
+		);
+		fireEvent.click(screen.getByLabelText("模型"));
+		fireEvent.click(await screen.findByRole("button", { name: "OpenRouter" }));
+		fireEvent.click(screen.getByRole("button", { name: modelId }));
+		expect(onModelChange).toHaveBeenCalledWith(`api-openrouter:${modelId}`);
+	});
 	beforeEach(() => {
 		ensurePointerCaptureMocks();
 	});

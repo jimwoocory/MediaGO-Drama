@@ -46,10 +46,10 @@ function main(): void {
 	const channel = readElectronChannel();
 	const githubPublisher = githubPublisherOptions(channel);
 	const appPackage = {
-		name: "mediago-drama",
-		productName: "小树人 MediaGo Drama",
+		name: "jw-drama",
+		productName: "JW Drama",
 		version: workspacePackage.version ?? "0.0.0",
-		description: "小树人 MediaGo Drama desktop workspace",
+		description: "JW Drama desktop workspace",
 		author: "MediaGo Dev",
 		license: workspacePackage.license ?? "Apache-2.0",
 		repository: {
@@ -62,7 +62,7 @@ function main(): void {
 		dependencies: stagedDependencies,
 		build: {
 			appId: "team.torchstellar.mediagodrama",
-			productName: "小树人 MediaGo Drama",
+			productName: "JW Drama",
 			asar: true,
 			// Flipping Electron fuses mutates the macOS framework binary. Only do so when
 			// the build will be signed afterwards; otherwise its embedded signature becomes

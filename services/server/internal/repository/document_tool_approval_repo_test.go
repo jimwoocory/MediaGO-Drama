@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestDocumentToolApprovalRepositoryLifecycle(t *testing.T) {
@@ -13,6 +14,7 @@ func TestDocumentToolApprovalRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
+	testutil.CloseDB(t, db)
 	repo := NewDocumentToolApprovalRepository(db)
 	seedRepositoryProject(t, db, "project-1")
 

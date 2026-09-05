@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestGenerationPreferenceRepositoryLifecycle(t *testing.T) {
@@ -13,6 +14,7 @@ func TestGenerationPreferenceRepositoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewGenerationPreferenceRepository() error = %v", err)
 	}
+	testutil.CloseDB(t, repo.db)
 
 	if _, err := repo.GetGenerationPreference("project-alpha"); !errors.Is(err, ErrRecordNotFound) {
 		t.Fatalf("GetGenerationPreference() error = %v, want ErrRecordNotFound", err)

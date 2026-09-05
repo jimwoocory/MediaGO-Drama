@@ -11,7 +11,7 @@ import (
 )
 
 func TestPreviewGenerationVoiceUsesLocalBundledSample(t *testing.T) {
-	store := NewGenerationTaskService(filepath.Join(t.TempDir(), "settings.db"), nil)
+	store := newTestGenerationTaskService(t, filepath.Join(t.TempDir(), "settings.db"), nil)
 	workflow := NewGenerationService(nil, store, nil)
 	workflow.voicePreviews = testVoicePreviewStore(t)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {

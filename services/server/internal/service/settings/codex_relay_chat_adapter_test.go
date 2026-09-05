@@ -99,6 +99,19 @@ func TestCodexRelayChatCompletionsAdapterMapsFunctionCallsBothDirections(t *test
 	}
 }
 
+func TestCodexResponsesInputDowngradesDeveloperRoleForCompatibleGateways(t *testing.T) {
+	messages, err := codexResponsesInputToChatMessages("", json.RawMessage(`[
+		{"type":"message","role":"developer","content":[{"type":"input_text","text":"use tools when needed"}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}
+	]`))
+	if err != nil {
+		t.Fatalf("codexResponsesInputToChatMessages returned error: %v", err)
+	}
+	if len(messages) != 2 || messages[0].Role != "system" || messages[1].Role != "user" {
+		t.Fatalf("messages = %#v, want developer downgraded to system", messages)
+	}
+}
+
 func TestCodexResponsesToolsToChatNormalizesEmptyMCPToolSchema(t *testing.T) {
 	tools, err := codexResponsesToolsToChat([]json.RawMessage{json.RawMessage(`{
 		"type":"function",

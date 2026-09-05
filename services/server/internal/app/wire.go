@@ -39,6 +39,7 @@ import (
 	serviceprompttemplates "github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
 	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	servicetextcompletion "github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
@@ -160,8 +161,9 @@ func newAPIHandler(config Config) *apiHandler {
 				return servicecodexskill.RuntimeHomeDescriptor{}, err
 			}
 			return servicecodexskill.RuntimeHomeDescriptor{
-				CodexHome: descriptor.CodexHome,
-				Isolated:  descriptor.Isolated,
+				CodexHome:        descriptor.CodexHome,
+				Isolated:         descriptor.Isolated,
+				SharesHostSkills: true,
 			}, nil
 		},
 	)
@@ -175,10 +177,12 @@ func newAPIHandler(config Config) *apiHandler {
 		configurableRunner.SetProcessConfigProvider(serviceacp.ProcessConfigProviderFunc(func(ctx context.Context, request serviceacp.ProcessConfigRequest) (serviceacp.ProcessConfig, error) {
 			nativeInstructions := useNativeACPInstructions(config.PromptDelivery)
 			if request.AgentID == "codex" {
-				codexConfig, err := settings.PrepareCodexRelayRuntimeConfig(
+				codexConfig, err := settings.PrepareAgentProviderRuntimeConfig(
 					ctx,
 					request.WorkspaceDir,
 					codexRelayBridgeBaseURL(agentBridgeURL)+"/api/v1/codex-relay",
+					request.PreferredModel,
+					request.ProviderReasoningEnabled,
 				)
 				if err != nil {
 					return serviceacp.ProcessConfig{}, err
@@ -194,14 +198,6 @@ func newAPIHandler(config Config) *apiHandler {
 					ConfigDir:                  codexConfig.ConfigDir,
 					Env:                        env,
 					NativeInstructionsInjected: nativeInstructions,
-				}
-				if strings.TrimSpace(request.PreferredModel) == "" {
-					check, checkErr := settings.CheckCodexRelay(ctx, servicesettings.CodexRelayCheckRequest{})
-					if checkErr == nil && len(check.Models) > 0 {
-						processConfig.RestrictModelValues = true
-						processConfig.AllowedModelValues = append([]string(nil), check.Models...)
-						processConfig.DiscoveredModelValues = append([]string(nil), check.Models...)
-					}
 				}
 				return processConfig, nil
 			}
@@ -423,7 +419,7 @@ func newAPIHandler(config Config) *apiHandler {
 
 func mediaGoAgentCoreProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "mediago", "aihubmix", "dmxapi", "openrouter", "openai", "minimax-cn":
+	case "mediago", "aihubmix", "openai-compatible", "dmxapi", "openrouter", "openai", "minimax-cn":
 		return true
 	default:
 		return false
@@ -436,6 +432,9 @@ func deepSeekHarnessAdapterProvider(provider string) bool {
 
 func agentBackendIDForRuntimeModel(modelValue string) string {
 	modelValue = strings.TrimSpace(modelValue)
+	if _, _, explicit := shared.SplitAgentModelRef(modelValue); explicit {
+		return "codex"
+	}
 	if modelValue == "" {
 		return ""
 	}

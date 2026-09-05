@@ -3,7 +3,7 @@ version: "3"
 vars:
   ROOT_DIR:
     sh: pwd
-  AGENT: '{{.AGENT | default ""}}'
+  AGENT: '{{.AGENT | default "codex"}}'
   GENERATION_CLIS: '{{.GENERATION_CLIS | default "none"}}'
   MODEL_PLATFORM: '{{.MODEL_PLATFORM | default ""}}'
   MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default ""}}'

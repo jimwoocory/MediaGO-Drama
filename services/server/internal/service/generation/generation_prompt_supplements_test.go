@@ -11,8 +11,6 @@ import (
 	"time"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 )
 
@@ -176,7 +174,7 @@ func waitForPromptSupplementsProviderRequest(t *testing.T, started <-chan corege
 func newPromptSupplementsTestWorkflow(t *testing.T) *GenerationService {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
-	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	repo, err := newTestGenerationTaskRepository(t, dbPath)
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
@@ -184,7 +182,7 @@ func newPromptSupplementsTestWorkflow(t *testing.T) *GenerationService {
 	settingsService := settings.NewSettings(&generationTestAPIKeyStore{values: map[string]string{
 		coregeneration.ProviderDMX: "sk-test",
 	}})
-	return NewGenerationService(settingsService, store, media.NewMediaAssets(dbPath, t.TempDir()))
+	return NewGenerationService(settingsService, store, newTestMediaAssets(t, dbPath, t.TempDir()))
 }
 
 type recordingPromptSupplementsProvider struct {

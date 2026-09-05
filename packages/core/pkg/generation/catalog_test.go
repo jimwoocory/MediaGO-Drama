@@ -847,8 +847,8 @@ func TestDefaultRoutes(t *testing.T) {
 	if !ok {
 		t.Fatal("audio default route is missing")
 	}
-	if audioRoute.ID != RouteOfficialMiniMaxSpeech28HD {
-		t.Fatalf("audio default route = %q, want %q", audioRoute.ID, RouteOfficialMiniMaxSpeech28HD)
+	if audioRoute.ID != RouteSpeechAPICompatible {
+		t.Fatalf("audio default route = %q, want %q", audioRoute.ID, RouteSpeechAPICompatible)
 	}
 }
 

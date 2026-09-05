@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
@@ -25,6 +26,9 @@ const (
 	codexRelayAPIKeySuffix      = ":api-key"
 	codexRelayProviderID        = "mediago-codex-relay"
 	codexRelayLocalBearerToken  = "mediago-codex-relay"
+	codexRelayLocalTokenEnv     = "MEDIAGO_CODEX_RELAY_TOKEN"
+	unifiedCodexRelayProfileID  = "unified-openai-compatible"
+	unifiedCodexRelayModel      = "gpt-5"
 	codexRelayDefaultHTTPClient = 60 * time.Second
 	codexRelayCheckHTTPClient   = 10 * time.Second
 	codexRelayCheckBodyLimit    = 1024 * 1024
@@ -218,6 +222,9 @@ func (service *Settings) ClearCodexRelayProfileAPIKey(ctx context.Context, profi
 // CheckCodexRelay verifies a Codex relay profile can authenticate against its upstream.
 func (service *Settings) CheckCodexRelay(ctx context.Context, input CodexRelayCheckRequest) (CodexRelayCheckResponse, error) {
 	active, apiKey, err := service.codexRelayProfileWithKey(input.ProfileID, true)
+	if errors.Is(err, ErrCodexRelayNotConfigured) && strings.TrimSpace(input.ProfileID) == "" {
+		active, apiKey, err = service.activeCodexRelayProfileWithUnifiedFallback(ctx, true)
+	}
 	if err != nil {
 		return CodexRelayCheckResponse{}, err
 	}
@@ -249,6 +256,9 @@ func (service *Settings) CheckCodexRelay(ctx context.Context, input CodexRelayCh
 		return result, fmt.Errorf("%w：上游返回 %d，请检查 API Key 和 Base URL", ErrCodexRelayCheckFailed, modelsResponse.StatusCode)
 	}
 	if modelsResponse.StatusCode >= http.StatusOK && modelsResponse.StatusCode < http.StatusMultipleChoices {
+		if !json.Valid([]byte(modelsBody)) {
+			return result, fmt.Errorf("%w：模型接口返回的不是 JSON，请检查 Base URL 是否指向 /v1 API，而不是供应商网页", ErrCodexRelayCheckFailed)
+		}
 		result.Models = codexRelayModelIDs(modelsBody)
 	}
 
@@ -335,6 +345,9 @@ func probeCodexRelayProtocol(ctx context.Context, client *http.Client, profile C
 		return false, response.StatusCode, fmt.Errorf("authentication failed")
 	}
 	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
+		if !json.Valid([]byte(body)) {
+			return false, response.StatusCode, fmt.Errorf("upstream returned non-JSON data; check that Base URL points to the API endpoint")
+		}
 		return true, response.StatusCode, nil
 	}
 	return false, response.StatusCode, fmt.Errorf("upstream returned %d", response.StatusCode)
@@ -372,7 +385,7 @@ func (service *Settings) persistDetectedCodexRelayProtocol(profileID string, pro
 // PrepareCodexRelayRuntimeConfig writes a Codex home configured for the active relay profile.
 func (service *Settings) PrepareCodexRelayRuntimeConfig(ctx context.Context, workspaceDir string, relayBaseURL string) (CodexRelayRuntimeConfig, error) {
 	_ = ctx
-	active, _, err := service.activeCodexRelayProfile()
+	active, _, err := service.activeCodexRelayProfileWithUnifiedFallback(ctx, true)
 	if err != nil {
 		if err == ErrCodexRelayNotConfigured {
 			return CodexRelayRuntimeConfig{}, nil
@@ -385,15 +398,49 @@ func (service *Settings) PrepareCodexRelayRuntimeConfig(ctx context.Context, wor
 	}
 
 	codexHome := filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "codex", "home")
+	return prepareCodexProfileRuntime(active, codexHome, relayBaseURL)
+}
+
+var codexRuntimeFilesMu sync.Mutex
+
+func prepareCodexProfileRuntime(active CodexRelayProfileMutation, codexHome, relayBaseURL string, contextWindow ...int) (CodexRelayRuntimeConfig, error) {
+	options := codexProfileRuntimeOptions{}
+	if len(contextWindow) > 0 {
+		options.ContextWindow = contextWindow[0]
+	}
+	return prepareCodexProfileRuntimeWithOptions(active, codexHome, relayBaseURL, options)
+}
+
+type codexProfileRuntimeOptions struct {
+	ContextWindow int
+	Reasoning     bool
+}
+
+func prepareCodexProfileRuntimeWithOptions(active CodexRelayProfileMutation, codexHome, relayBaseURL string, options codexProfileRuntimeOptions) (CodexRelayRuntimeConfig, error) {
+	codexRuntimeFilesMu.Lock()
+	defer codexRuntimeFilesMu.Unlock()
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		return CodexRelayRuntimeConfig{}, fmt.Errorf("creating codex relay home: %w", err)
 	}
 	configText := renderCodexRelayConfig(active, relayBaseURL)
-	if err := os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte(configText), 0o600); err != nil {
+	if options.ContextWindow > 0 {
+		window := options.ContextWindow
+		catalogPath, err := writeAgentProviderModelCatalogWithReasoning(codexHome, active.Model, window, options.Reasoning)
+		if err != nil {
+			return CodexRelayRuntimeConfig{}, err
+		}
+		configText = fmt.Sprintf("model_catalog_json = %q\nmodel_context_window = %d\nmodel_auto_compact_token_limit = %d\n", catalogPath, window, agentModelCompactLimit(window)) + configText
+		// These are provider-table keys: bound native retry loops for gateways.
+		configText += "request_max_retries = 2\nstream_max_retries = 2\n"
+	}
+	if err := writeCodexRuntimeFile(filepath.Join(codexHome, "config.toml"), []byte(configText)); err != nil {
 		return CodexRelayRuntimeConfig{}, fmt.Errorf("writing codex relay config: %w", err)
 	}
+	// Keep auth.json for older bundled Codex builds while the custom provider
+	// uses env_key. The token only authenticates the loopback bridge; the real
+	// upstream key stays in the settings store and is never written here.
 	authText := `{"OPENAI_API_KEY":"` + codexRelayLocalBearerToken + `"}` + "\n"
-	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(authText), 0o600); err != nil {
+	if err := writeCodexRuntimeFile(filepath.Join(codexHome, "auth.json"), []byte(authText)); err != nil {
 		return CodexRelayRuntimeConfig{}, fmt.Errorf("writing codex relay auth: %w", err)
 	}
 	return CodexRelayRuntimeConfig{
@@ -401,16 +448,24 @@ func (service *Settings) PrepareCodexRelayRuntimeConfig(ctx context.Context, wor
 		CodexHome:  codexHome,
 		Configured: true,
 		Env: map[string]string{
-			"CODEX_HOME":     codexHome,
-			"OPENAI_API_KEY": codexRelayLocalBearerToken,
+			"CODEX_HOME":            codexHome,
+			"OPENAI_API_KEY":        codexRelayLocalBearerToken,
+			codexRelayLocalTokenEnv: codexRelayLocalBearerToken,
 		},
 	}, nil
+}
+
+func writeCodexRuntimeFile(path string, content []byte) error {
+	if current, err := os.ReadFile(path); err == nil && bytes.Equal(current, content) {
+		return nil
+	}
+	return os.WriteFile(path, content, 0o600)
 }
 
 // DescribeCodexRuntimeHome returns the isolated Codex home used by an active relay without writing files.
 func (service *Settings) DescribeCodexRuntimeHome(ctx context.Context, workspaceDir string) (CodexRuntimeHomeDescriptor, error) {
 	_ = ctx
-	if _, _, err := service.activeCodexRelayProfile(); err != nil {
+	if _, _, err := service.activeCodexRelayProfileWithUnifiedFallback(ctx, false); err != nil {
 		if errors.Is(err, ErrCodexRelayNotConfigured) {
 			return CodexRuntimeHomeDescriptor{}, nil
 		}
@@ -427,13 +482,26 @@ func (service *Settings) OpenCodexRelayRequest(ctx context.Context, method strin
 	if !validCodexRelayLocalAuthorization(headers) {
 		return nil, ErrCodexRelayUnauthorized
 	}
-	active, apiKey, err := service.activeCodexRelayProfile()
+	var active CodexRelayProfileMutation
+	var apiKey string
+	var err error
+	if strings.HasPrefix(relayPath, "/providers/") {
+		provider, path, found := strings.Cut(strings.TrimPrefix(relayPath, "/providers/"), "/")
+		if !found || provider == "" {
+			return nil, ErrCodexRelayInvalid
+		}
+		relayPath = "/" + path
+		active, apiKey, err = service.agentProviderProfile(ctx, provider)
+	} else {
+		active, apiKey, err = service.activeCodexRelayProfileWithUnifiedFallback(ctx, false)
+	}
 	if err != nil {
 		return nil, err
 	}
 	upstreamPath := relayPath
 	upstreamBody := body
 	responseStream := false
+	var responseTools []json.RawMessage
 	convertChatResponse := false
 	if effectiveCodexRelayProtocol(active) == CodexRelayProtocolChatCompletions {
 		cleanPath := strings.SplitN(relayPath, "?", 2)[0]
@@ -449,6 +517,11 @@ func (service *Settings) OpenCodexRelayRequest(ctx context.Context, method strin
 				return nil, convertErr
 			}
 			upstreamBody = converted
+			var original codexResponsesRequest
+			if err := json.Unmarshal(body, &original); err != nil {
+				return nil, err
+			}
+			responseTools = original.Tools
 			responseStream = stream
 			upstreamPath = "/v1/chat/completions"
 			convertChatResponse = true
@@ -480,7 +553,7 @@ func (service *Settings) OpenCodexRelayRequest(ctx context.Context, method strin
 		return nil, fmt.Errorf("requesting codex relay upstream: %w", err)
 	}
 	if convertChatResponse {
-		return codexRelayChatResponseToResponses(response, responseStream)
+		return codexRelayChatResponseToResponses(response, responseStream, responseTools)
 	}
 	return response, nil
 }
@@ -492,6 +565,102 @@ func CodexRelayAPIKeyName(profileID string) string {
 
 func (service *Settings) activeCodexRelayProfile() (CodexRelayProfileMutation, string, error) {
 	return service.codexRelayProfileWithKey("", false)
+}
+
+// activeCodexRelayProfileWithUnifiedFallback keeps the dedicated Codex relay
+// authoritative, but lets the API Keys page's OpenAI-compatible gateway power
+// Codex when no separate relay profile exists. This makes the single unified
+// credential usable by the Codex Harness without copying the upstream secret
+// into CODEX_HOME.
+func (service *Settings) activeCodexRelayProfileWithUnifiedFallback(
+	ctx context.Context,
+	discoverModel bool,
+) (CodexRelayProfileMutation, string, error) {
+	profile, apiKey, err := service.activeCodexRelayProfile()
+	if err == nil || !errors.Is(err, ErrCodexRelayNotConfigured) {
+		return profile, apiKey, err
+	}
+	return service.unifiedCodexRelayProfile(ctx, discoverModel)
+}
+
+func (service *Settings) unifiedCodexRelayProfile(
+	ctx context.Context,
+	discoverModel bool,
+) (CodexRelayProfileMutation, string, error) {
+	if service == nil || service.apiKeys == nil {
+		return CodexRelayProfileMutation{}, "", ErrCodexRelayNotConfigured
+	}
+	apiKey, _, err := service.apiKeys.Get(agentModelProviderAIHubMix)
+	if err != nil {
+		return CodexRelayProfileMutation{}, "", err
+	}
+	apiKey = strings.TrimSpace(apiKey)
+	baseURL := strings.TrimRight(strings.TrimSpace(service.AIHubMixBaseURL()), "/")
+	if apiKey == "" || baseURL == "" || !validHTTPURL(baseURL) {
+		return CodexRelayProfileMutation{}, "", ErrCodexRelayNotConfigured
+	}
+
+	model := unifiedCodexRelayModel
+	if discoverModel {
+		models, modelErr := fetchOpenAICompatibleModels(ctx, baseURL, apiKey)
+		if modelErr != nil {
+			return CodexRelayProfileMutation{}, "", fmt.Errorf("%w：无法读取第三方模型列表：%v", ErrCodexRelayCheckFailed, modelErr)
+		}
+		discovered := preferredUnifiedCodexModel(models)
+		if discovered == "" {
+			return CodexRelayProfileMutation{}, "", fmt.Errorf("%w：第三方模型列表中没有可用于 Agent 的文本模型", ErrCodexRelayCheckFailed)
+		}
+		model = discovered
+	}
+	return CodexRelayProfileMutation{
+		ID:       unifiedCodexRelayProfileID,
+		Name:     "统一接口（第三方）",
+		BaseURL:  baseURL,
+		Model:    model,
+		Protocol: CodexRelayProtocolAuto,
+		Enabled:  true,
+	}, apiKey, nil
+}
+
+func preferredUnifiedCodexModel(models []openAIModelListItem) string {
+	bestModel := ""
+	bestScore := -1
+	for _, item := range models {
+		model := strings.TrimSpace(item.ID)
+		if model == "" || mediagoGatewayModelLooksTaskOnly(mediagoGatewayModel{ID: model}) {
+			continue
+		}
+		score := unifiedCodexModelScore(model)
+		if score > bestScore {
+			bestModel = model
+			bestScore = score
+		}
+	}
+	return bestModel
+}
+
+func unifiedCodexModelScore(model string) int {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	switch {
+	case strings.Contains(normalized, "codex"):
+		return 600
+	case strings.Contains(normalized, "gpt-5"):
+		return 550
+	case normalized == "deepseek-v3.2":
+		// Widely supported OpenAI-compatible tool-calling model. Prefer the
+		// stable exact route over catalog-only preview/future aliases.
+		return 540
+	case strings.Contains(normalized, "claude"):
+		return 500
+	case strings.Contains(normalized, "deepseek"), strings.Contains(normalized, "qwen"):
+		return 450
+	case strings.Contains(normalized, "glm"), strings.Contains(normalized, "kimi"):
+		return 400
+	case strings.Contains(normalized, "gpt-4"):
+		return 350
+	default:
+		return 100
+	}
 }
 
 func (service *Settings) codexRelayProfileWithKey(profileID string, allowGlobalDisabled bool) (CodexRelayProfileMutation, string, error) {
@@ -692,13 +861,13 @@ func codexRelayStoredProfileExists(stored codexRelayStoredSettings, profileID st
 func renderCodexRelayConfig(profile CodexRelayProfileMutation, relayBaseURL string) string {
 	baseURL := strings.TrimRight(relayBaseURL, "/") + "/v1"
 	return fmt.Sprintf(
-		"model = %q\nmodel_provider = %q\n\n[model_providers.%s]\nname = %q\nwire_api = \"responses\"\nrequires_openai_auth = true\nbase_url = %q\nexperimental_bearer_token = %q\n",
+		"model = %q\nmodel_provider = %q\n\n[model_providers.%s]\nname = %q\nwire_api = \"responses\"\nrequires_openai_auth = false\nbase_url = %q\nenv_key = %q\n",
 		profile.Model,
 		codexRelayProviderID,
 		codexRelayProviderID,
 		codexRelayProviderID,
 		baseURL,
-		codexRelayLocalBearerToken,
+		codexRelayLocalTokenEnv,
 	)
 }
 

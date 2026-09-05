@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -156,14 +155,8 @@ func TestSettingsListModelPlatformsDefaultsAndOverrides(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
 
 	list := settings.ListModelPlatforms(context.Background())
-	if len(list.Platforms) != 2 ||
-		list.Platforms[0].ID != ModelPlatformMediago ||
-		list.Platforms[1].ID != generation.ProviderJimeng ||
-		list.Platforms[1].Kind != "cli" {
-		t.Fatalf("default platforms = %#v, want mediago and default jimeng CLI", list.Platforms)
-	}
-	if len(list.Platforms[0].ModelGroups) == 0 {
-		t.Fatalf("default mediago platform groups = %#v, want catalog fallback groups", list.Platforms[0].ModelGroups)
+	if len(list.Platforms) != 0 {
+		t.Fatalf("default platforms = %#v, want explicit configuration before exposing routes", list.Platforms)
 	}
 
 	settings.SetGenerationCLIs([]string{})
@@ -193,15 +186,18 @@ func TestSettingsGenerationCLIProvidersFollowConfiguration(t *testing.T) {
 	}
 	if !apiKeyProviderExists(keys, generation.ProviderLibTV) ||
 		!apiKeyProviderExists(keys, generation.ProviderXiaoyunque) ||
-		apiKeyProviderExists(keys, generation.ProviderJimeng) {
-		t.Fatalf("providers = %#v, want enabled CLI providers only", keys.Providers)
+		!apiKeyProviderExists(keys, generation.ProviderJimeng) {
+		t.Fatalf("providers = %#v, want credentials manageable independently of enabled routes", keys.Providers)
 	}
 
 	if _, err := settings.SetAPIKey(context.Background(), generation.ProviderXiaoyunque, "xyq-key"); err != nil {
 		t.Fatalf("SetAPIKey xiaoyunque returned error: %v", err)
 	}
-	if _, err := settings.SetAPIKey(context.Background(), generation.ProviderJimeng, "oauth:old"); err != ErrAPIKeyProviderNotFound {
-		t.Fatalf("SetAPIKey jimeng error = %v, want ErrAPIKeyProviderNotFound", err)
+	if _, err := settings.SetAPIKey(context.Background(), generation.ProviderJimeng, "oauth:old"); err != nil {
+		t.Fatalf("saving inactive CLI credential: %v", err)
+	}
+	if modelPlatformExists(settings.ListModelPlatforms(context.Background()), generation.ProviderJimeng) {
+		t.Fatal("saving a credential must not implicitly enable its CLI route")
 	}
 }
 
@@ -286,6 +282,7 @@ func TestSettingsListModelPlatformsUsesMediagoGatewayModels(t *testing.T) {
 	}})
 	settings.SetGenerationCLIs([]string{})
 	settings.SetMediagoBaseURL(server.URL + "/api/v1")
+	settings.SetModelPlatforms([]string{ModelPlatformMediago})
 
 	list := settings.ListModelPlatforms(context.Background())
 	if len(list.Platforms) != 1 {
@@ -322,11 +319,7 @@ func TestSettingsClearJimengAPIKeyRunsLogout(t *testing.T) {
 	settings := NewSettings(store)
 	tempDir := t.TempDir()
 	argsPath := filepath.Join(tempDir, "args.log")
-	binPath := filepath.Join(tempDir, "dreamina")
-	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$*\" >> %q\nexit 0\n", argsPath)
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake jimeng CLI: %v", err)
-	}
+	binPath := writeSettingsCLIFixture(t, "logout", argsPath)
 	settings.SetJimengCLIPaths(binPath, "")
 
 	list, err := settings.ClearAPIKey(context.Background(), "jimeng")
@@ -352,12 +345,13 @@ func TestSettingsClearLibTVAPIKeyRunsLogout(t *testing.T) {
 	settings.SetGenerationCLIs([]string{"libtv"})
 	tempDir := t.TempDir()
 	argsPath := filepath.Join(tempDir, "args.log")
-	binPath := filepath.Join(tempDir, "libtv")
-	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$*\" >> %q\nexit 0\n", argsPath)
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake libtv CLI: %v", err)
-	}
+	binPath := writeSettingsCLIFixture(t, "logout", argsPath)
 	settings.SetLibTVCLIPaths(binPath, "")
+	t.Cleanup(func() {
+		if err := settings.cancelActiveProviderLogin(context.Background(), generation.ProviderLibTV); err != nil {
+			t.Errorf("closing login fixture: %v", err)
+		}
+	})
 
 	list, err := settings.ClearAPIKey(context.Background(), "libtv")
 	if err != nil {
@@ -378,17 +372,7 @@ func TestSettingsClearLibTVAPIKeyRunsLogout(t *testing.T) {
 
 func TestSettingsBeginJimengLoginStoresOAuthMarkerWhenSessionExists(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
-	binPath := filepath.Join(t.TempDir(), "dreamina")
-	script := `#!/bin/sh
-if [ "$1" = "login" ] && [ "$2" = "--headless" ] && [ "$#" -eq 2 ]; then
-  echo '已复用当前本地 OAuth 登录态。'
-  exit 0
-fi
-exit 1
-`
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake jimeng CLI: %v", err)
-	}
+	binPath := writeSettingsCLIFixture(t, "jimeng-existing", "")
 	settings.SetJimengCLIPaths(binPath, "")
 
 	result, err := settings.BeginJimengLogin(context.Background(), false)
@@ -412,24 +396,7 @@ func TestSettingsJimengHeadlessLoginReturnsChallengeAndCompletes(t *testing.T) {
 	settings := NewSettings(store)
 	tempDir := t.TempDir()
 	argsPath := filepath.Join(tempDir, "args.log")
-	binPath := filepath.Join(tempDir, "dreamina")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> %q
-if [ "$1" = "login" ] && [ "$2" = "--headless" ] && [ "$#" -eq 2 ]; then
-  echo "verification_uri: https://example.test/device"
-  echo "user_code: ABCD-EFGH"
-  echo "device_code: device-123"
-  exit 0
-fi
-if [ "$1" = "login" ] && [ "$2" = "checklogin" ]; then
-  echo "即梦本地登录态已可用"
-  exit 0
-fi
-exit 1
-`, argsPath)
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake jimeng CLI: %v", err)
-	}
+	binPath := writeSettingsCLIFixture(t, "jimeng-headless", argsPath)
 	settings.SetJimengCLIPaths(binPath, "")
 
 	result, err := settings.BeginJimengLogin(context.Background(), false)
@@ -481,19 +448,13 @@ func TestSettingsBeginLibTVLoginReturnsChallengeAndPersistsAfterCLICompletes(t *
 	store := &memoryAPIKeyStore{values: map[string]string{}}
 	settings := NewSettings(store)
 	settings.SetGenerationCLIs([]string{"libtv"})
-	binPath := filepath.Join(t.TempDir(), "libtv")
-	script := `#!/bin/sh
-if [ "$1" = "login" ] && [ "$2" = "web" ] && [ "$#" -eq 2 ]; then
-  echo "Open https://libtv.example.test/login in your browser"
-  sleep 0.2
-  exit 0
-fi
-exit 1
-`
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake libtv CLI: %v", err)
-	}
+	binPath := writeSettingsCLIFixture(t, "libtv-success", "")
 	settings.SetLibTVCLIPaths(binPath, "")
+	t.Cleanup(func() {
+		if err := settings.cancelActiveProviderLogin(context.Background(), generation.ProviderLibTV); err != nil {
+			t.Errorf("closing login fixture: %v", err)
+		}
+	})
 
 	result, err := settings.BeginLibTVLogin(context.Background(), false)
 	if err != nil {
@@ -531,45 +492,13 @@ func TestSettingsLibTVPendingLoginCanBeReplacedAndClearedForRetry(t *testing.T) 
 	settings.SetGenerationCLIs([]string{"libtv"})
 	tempDir := t.TempDir()
 	argsPath := filepath.Join(tempDir, "args.log")
-	pidsPath := filepath.Join(tempDir, "pids.log")
-	currentPIDPath := filepath.Join(tempDir, "current.pid")
-	binPath := filepath.Join(tempDir, "libtv")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> %q
-if [ "$1" = "login" ] && [ "$2" = "web" ] && [ "$#" -eq 2 ]; then
-  if [ -f %q ]; then
-    current_pid=$(cat %q)
-    if kill -0 "$current_pid" 2>/dev/null; then
-      echo "LibTV login is already running" >&2
-      exit 23
-    fi
-  fi
-  echo $$ > %q
-  echo $$ >> %q
-  echo "Open https://libtv.example.test/login in your browser"
-  while :; do sleep 1; done
-fi
-if [ "$1" = "logout" ] && [ "$#" -eq 1 ]; then
-  exit 0
-fi
-exit 1
-`, argsPath, currentPIDPath, currentPIDPath, currentPIDPath, pidsPath)
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake libtv CLI: %v", err)
-	}
+	binPath := writeSettingsCLIFixture(t, "libtv-pending", argsPath)
+	settings.SetLibTVCLIPaths(binPath, "")
 	t.Cleanup(func() {
-		output, _ := os.ReadFile(pidsPath)
-		for _, line := range strings.Fields(string(output)) {
-			pid, err := strconv.Atoi(line)
-			if err != nil {
-				continue
-			}
-			if process, err := os.FindProcess(pid); err == nil {
-				_ = process.Kill()
-			}
+		if err := settings.cancelActiveProviderLogin(context.Background(), generation.ProviderLibTV); err != nil {
+			t.Errorf("closing login fixture: %v", err)
 		}
 	})
-	settings.SetLibTVCLIPaths(binPath, "")
 
 	first, err := settings.BeginLibTVLogin(context.Background(), false)
 	if err != nil {

@@ -17,7 +17,7 @@ import (
 
 func TestAgentEventStreamReceivesChatAndDocumentEditEvents(t *testing.T) {
 	dbPath := filepathForTestDB(t)
-	handler := NewHandlerWithConfig(
+	handler := newTestHandlerWithConfig(t,
 		fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 		Config{
 			SettingsDBPath:          dbPath,

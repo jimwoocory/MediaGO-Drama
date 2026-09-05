@@ -19,10 +19,11 @@ import (
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestMediaGoAgentCoreProviderRouting(t *testing.T) {
-	for _, provider := range []string{"mediago", "AIHubMix", "dmxapi", "openrouter", "openai", "minimax-cn"} {
+	for _, provider := range []string{"mediago", "AIHubMix", "openai-compatible", "dmxapi", "openrouter", "openai", "minimax-cn"} {
 		if !mediaGoAgentCoreProvider(provider) {
 			t.Fatalf("provider %q should route through MediaGo Agent Core", provider)
 		}
@@ -41,7 +42,12 @@ func TestAgentBackendIDForRuntimeModel(t *testing.T) {
 	}{
 		{model: "", want: ""},
 		{model: "gpt-5.6", want: "codex"},
+		{model: "chatgpt:gpt-5.6", want: "codex"},
+		{model: "api-tokease:deepseek/DeepSeek-V3.2", want: "codex"},
+		{model: "api-openrouter:vendor/model:variant", want: "codex"},
+		{model: "gateway-deepseek:deepseek-chat", want: "codex"},
 		{model: "aihubmix/gpt-5.5", want: "opencode"},
+		{model: "openai-compatible/gpt-5.5", want: "opencode"},
 		{model: "deepseek/deepseek-chat", want: "opencode"},
 		{model: "unknown/model", want: "codex"},
 	} {
@@ -127,7 +133,7 @@ func TestSharedCapabilityChainIndependentOfHarness(t *testing.T) {
 func TestNewHandlerRequiresSidecarToken(t *testing.T) {
 	const token = "sidecar-token-with-at-least-thirty-two-bytes"
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
-	handler := NewHandlerWithConfig(
+	handler := newTestHandlerWithConfig(t,
 		fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 		Config{
 			WorkspaceDir:            workspaceDir,
@@ -139,9 +145,6 @@ func TestNewHandlerRequiresSidecarToken(t *testing.T) {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
-	if closer, ok := handler.(interface{ Close() error }); ok {
-		t.Cleanup(func() { _ = closer.Close() })
-	}
 
 	missing := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	missingResponse := httptest.NewRecorder()
@@ -166,11 +169,12 @@ func TestNewHandlerDefaultsSettingsDBToWorkspaceDatabaseDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening legacy settings database: %v", err)
 	}
+	testutil.CloseDB(t, legacyRepos.DB)
 	if err := legacyRepos.APIKeys.Set("openrouter", "sk-legacy-settings"); err != nil {
 		t.Fatalf("writing legacy API key: %v", err)
 	}
 
-	handler := NewHandlerWithConfig(
+	handler := newTestHandlerWithConfig(t,
 		fstest.MapFS{
 			"index.html": {
 				Data: []byte("<html>workspace</html>"),
@@ -185,13 +189,6 @@ func TestNewHandlerDefaultsSettingsDBToWorkspaceDatabaseDir(t *testing.T) {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
-	if closer, ok := handler.(interface{ Close() error }); ok {
-		t.Cleanup(func() {
-			if err := closer.Close(); err != nil {
-				t.Fatalf("closing handler: %v", err)
-			}
-		})
-	}
 
 	if paths.SettingsDatabasePath() == paths.DatabasePath() {
 		t.Fatalf("settings database path should be separate from workspace database path")
@@ -224,7 +221,7 @@ func TestHealthIsNotReadyWhenRepositoryInitializationFails(t *testing.T) {
 	if err := os.WriteFile(blockedParent, []byte("not a directory"), 0o600); err != nil {
 		t.Fatalf("creating blocked settings parent: %v", err)
 	}
-	handler := NewHandlerWithConfig(
+	handler := newTestHandlerWithConfig(t,
 		fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 		Config{
 			WorkspaceDir:            filepath.Join(root, "workspace"),
@@ -235,9 +232,6 @@ func TestHealthIsNotReadyWhenRepositoryInitializationFails(t *testing.T) {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
-	if closer, ok := handler.(interface{ Close() error }); ok {
-		t.Cleanup(func() { _ = closer.Close() })
-	}
 
 	response := requestJSON(t, handler, http.MethodGet, "/api/v1/health", "")
 	defer response.Body.Close()
@@ -468,7 +462,7 @@ func TestNewHandlerWiresFixedInstructionsIntoCodexProcessConfig(t *testing.T) {
 	t.Setenv("CODEX_CONFIG", `{"model":"gpt-parent","developer_instructions":"parent"}`)
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 	runner := &processConfigCapturingRunner{}
-	handler := NewHandlerWithConfig(
+	newTestHandlerWithConfig(t,
 		fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 		Config{
 			WorkspaceDir:            workspaceDir,
@@ -478,7 +472,6 @@ func TestNewHandlerWiresFixedInstructionsIntoCodexProcessConfig(t *testing.T) {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
-	closeTestHandler(t, handler)
 	if runner.processConfigProvider == nil {
 		t.Fatal("agent runner did not receive the ACP process config provider")
 	}

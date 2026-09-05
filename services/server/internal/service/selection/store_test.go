@@ -13,6 +13,7 @@ import (
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func newTestStore(t *testing.T) (*Service, *repository.AgentSelectionRepository, string) {
@@ -21,6 +22,7 @@ func newTestStore(t *testing.T) (*Service, *repository.AgentSelectionRepository,
 	if err != nil {
 		t.Fatalf("opening workspace db: %v", err)
 	}
+	testutil.CloseDB(t, db)
 	projectID := "project-selection"
 	now := domain.TimeFromString("2026-06-01T00:00:00Z")
 	if err := db.Create(&domain.WorkspaceProjectModel{

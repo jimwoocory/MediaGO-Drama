@@ -15,6 +15,7 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
 
 const mediaGoDramaMCPServerName = MediaGoDramaMCPServerName
@@ -71,6 +72,7 @@ type acpClient struct {
 	activeMessageItemID string
 	streamedMessage     bool
 	runtimeErrorMessage string
+	promptCancel        context.CancelCauseFunc
 	promptStartedAt     time.Time
 	firstUpdateLogged   bool
 	updateCount         int
@@ -81,7 +83,6 @@ type acpClient struct {
 	toolCallStarts      map[string]time.Time
 	dsmlCarry           string
 	dsmlInside          bool
-	toolGuard           toolLoopGuard
 	pendingPermissions  sync.Map
 	pendingRequests     sync.Map
 	permissionTimeout   time.Duration
@@ -150,13 +151,14 @@ func NewACPAgentRunnerWithDocumentMCPConfigPathAndArgv(
 
 // ProcessConfigRequest describes one ACP child process launch.
 type ProcessConfigRequest struct {
-	AgentID           string
-	WorkspaceDir      string
-	ProjectID         string
-	ProjectDir        string
-	WorkingDir        string
-	PreferredModel    string
-	FixedInstructions string
+	AgentID                  string
+	WorkspaceDir             string
+	ProjectID                string
+	ProjectDir               string
+	WorkingDir               string
+	PreferredModel           string
+	ProviderReasoningEnabled bool
+	FixedInstructions        string
 }
 
 // ProcessConfig contains extra environment for one ACP child process.
@@ -367,16 +369,23 @@ func (runner *acpAgentRunner) prepareProcessConfig(
 		fixedInstructions = runner.fixedInstructions(request)
 	}
 	processConfig, err := runner.processConfigProvider.PrepareACPProcessConfig(ctx, ProcessConfigRequest{
-		AgentID:           agentID,
-		WorkspaceDir:      strings.TrimSpace(request.WorkspaceDir),
-		ProjectID:         strings.TrimSpace(request.ProjectID),
-		ProjectDir:        strings.TrimSpace(request.ProjectDir),
-		WorkingDir:        strings.TrimSpace(request.WorkingDir),
-		PreferredModel:    strings.TrimSpace(request.Model.Value),
-		FixedInstructions: fixedInstructions,
+		AgentID:                  agentID,
+		WorkspaceDir:             strings.TrimSpace(request.WorkspaceDir),
+		ProjectID:                strings.TrimSpace(request.ProjectID),
+		ProjectDir:               strings.TrimSpace(request.ProjectDir),
+		WorkingDir:               strings.TrimSpace(request.WorkingDir),
+		PreferredModel:           strings.TrimSpace(request.Model.Value),
+		ProviderReasoningEnabled: request.Reasoning.Source == "providerReasoning" && request.Reasoning.Value != "provider:default",
+		FixedInstructions:        fixedInstructions,
 	})
 	if err != nil {
 		return ProcessConfig{}, fmt.Errorf("preparing %s config: %w", agentID, err)
+	}
+	if agentID == "codex" {
+		processConfig, err = applyProviderReasoningConfig(processConfig, request)
+		if err != nil {
+			return ProcessConfig{}, err
+		}
 	}
 	if strings.TrimSpace(processConfig.ConfigDir) != "" {
 		processConfig.Env = cloneProcessConfigEnv(processConfig.Env)
@@ -400,7 +409,11 @@ func (runner *acpAgentRunner) fixedInstructions(request agentRunRequest) string 
 	if runner == nil || runner.buildPrompt == nil {
 		return ""
 	}
-	return strings.TrimSpace(runner.buildPrompt(request))
+	instructions := strings.TrimSpace(runner.buildPrompt(request))
+	if instructions == "" {
+		return ""
+	}
+	return instructions + "\n\n" + acpPlanProgressInstructions
 }
 
 func instructionFingerprint(backendIdentity string, delivery string, fixedInstructions string) string {
@@ -520,12 +533,25 @@ func acpBackendIdentity(command string, args []string) string {
 }
 
 func applyACPSessionSelections(ctx context.Context, conn acpSessionConfigurator, sessionID acp.SessionId, request agentRunRequest, logArgs []any) error {
+	applyReasoning := shouldApplyACPReasoningSelection(request)
+	explicitProviderReasoning := false
+	if provider, _, explicit := shared.SplitAgentModelRef(request.Model.Value); explicit && provider != "chatgpt" && request.Reasoning.Source == "providerReasoning" {
+		explicitProviderReasoning = true
+		effort := strings.TrimPrefix(request.Reasoning.Value, "provider:")
+		applyReasoning = effort != "default"
+		request.Reasoning = agentACPConfigSelection{Source: AgentRuntimeConfigSourceOption, ConfigID: "reasoning_effort", Value: effort}
+	}
+	if _, model, explicit := shared.SplitAgentModelRef(request.Model.Value); explicit {
+		request.Model.Value = model
+		request.Model.ConfigID = "model"
+		request.Model.Source = AgentRuntimeConfigSourceOption
+	}
 	if err := applyACPConfigSelection(ctx, conn, sessionID, request.Model, "model", logArgs); err != nil {
 		return err
 	}
-	if shouldApplyACPReasoningSelection(request) {
+	if applyReasoning {
 		if err := applyACPConfigSelection(ctx, conn, sessionID, request.Reasoning, "reasoning", logArgs); err != nil {
-			if isACPInvalidParamsError(err) {
+			if isACPInvalidParamsError(err) && !explicitProviderReasoning {
 				acpLog().Warn("acp reasoning config ignored", append(logArgs, "acp_session_id", sessionID, "error", err)...)
 			} else {
 				return err
@@ -539,6 +565,11 @@ func applyACPSessionSelections(ctx context.Context, conn acpSessionConfigurator,
 }
 
 func shouldApplyACPReasoningSelection(request agentRunRequest) bool {
+	if provider, _, explicit := shared.SplitAgentModelRef(request.Model.Value); explicit {
+		// API effort is applied to its isolated process config. Account-channel
+		// ACP selections must not leak into a different provider's catalogue.
+		return provider == "chatgpt" && strings.TrimSpace(request.Reasoning.Value) != ""
+	}
 	if strings.TrimSpace(request.Reasoning.Value) == "" {
 		return false
 	}

@@ -234,9 +234,9 @@ describe("agent turn view model", () => {
 
 		expect(
 			succeeded[0]?.processItems[0]?.metadata?.planEntries?.map((entry) => entry.status),
-		).toEqual(["completed", "completed", "completed"]);
+		).toEqual(["completed", "unconfirmed", "unconfirmed"]);
 		expect(failed[0]?.processItems[0]?.metadata?.planEntries?.map((entry) => entry.status)).toEqual(
-			["completed", "pending", "pending"],
+			["completed", "unconfirmed", "unconfirmed"],
 		);
 		expect(plan.metadata?.planEntries?.map((entry) => entry.status)).toEqual([
 			"completed",

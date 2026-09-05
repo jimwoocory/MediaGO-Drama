@@ -256,8 +256,11 @@ func upsertProjectedACPPlan(
 	if content == "" {
 		content = firstNonEmpty(event.Message, "ACP 计划已更新。")
 	}
-	existingIndex := findProjectedCurrentTurnPlanIndex(conversation.Messages)
-	metadata := map[string]any{"planEntries": entries}
+	existingIndex := findProjectedCurrentTurnPlanIndex(conversation.Messages, event)
+	metadata := map[string]any{
+		"planEntries":    entries,
+		"planToolStates": projectedPlanToolStates(conversation.Messages, firstNonEmpty(event.TurnID, event.RunID)),
+	}
 	message := AgentChatMessageRecord{
 		ID:        messageIDForEvent(event, "plan"),
 		Role:      "assistant",
@@ -282,7 +285,9 @@ func upsertProjectedACPPlan(
 	} else {
 		conversation.Messages = append(conversation.Messages, message)
 	}
-	conversation.Status = nonTerminalProjectedRunStatus(conversation.Status)
+	if conversation.Status == "pending" || conversation.Status == "" {
+		conversation.Status = "running"
+	}
 	conversation.UpdatedAt = event.CreatedAt
 	return conversation
 }

@@ -319,20 +319,32 @@ export const findCurrentTurnPlanMessage = (
 	identity?: AgentItemIdentity,
 ) => {
 	const normalizedIdentity = normalizeAgentItemIdentity(identity);
-	if (normalizedIdentity.itemId) {
-		const index = findLastMessageIndexByIdentity(messages, normalizedIdentity, (message) =>
-			Boolean(message.kind === "plan" && message.metadata?.planEntries),
-		);
-		return index >= 0 ? messages[index] : undefined;
-	}
 	const lastUserIndex = findLastIndex(messages, (message) => message.role === "user");
-	return messages.find(
-		(message, index) =>
-			index > lastUserIndex && message.kind === "plan" && message.metadata?.planEntries,
-	);
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (message.kind !== "plan" || !message.metadata?.planEntries) continue;
+		if (normalizedIdentity.turnId && message.turnId) {
+			if (message.turnId !== normalizedIdentity.turnId) continue;
+		} else if (
+			index <= lastUserIndex ||
+			(normalizedIdentity.turnId &&
+				messages[lastUserIndex]?.turnId &&
+				messages[lastUserIndex].turnId !== normalizedIdentity.turnId)
+		) {
+			continue;
+		}
+		if (
+			normalizedIdentity.itemId &&
+			message.itemId !== normalizedIdentity.itemId &&
+			message.id !== normalizedIdentity.itemId
+		)
+			continue;
+		return message;
+	}
+	return undefined;
 };
 
-export const findLastIndex = <T>(items: T[], predicate: (item: T) => boolean) => {
+export const findLastIndex = <T>(items: readonly T[], predicate: (item: T) => boolean) => {
 	for (let index = items.length - 1; index >= 0; index -= 1) {
 		if (predicate(items[index])) return index;
 	}

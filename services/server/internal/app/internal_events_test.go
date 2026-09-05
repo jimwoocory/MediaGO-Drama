@@ -10,15 +10,30 @@ import (
 
 	"github.com/gin-gonic/gin"
 	httphandlers "github.com/mediago-dev/mediago-drama/services/server/internal/http/handlers"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/testutil"
 )
 
 func TestHandleInternalPublishEvent(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
+	settingsPath := filepath.Join(t.TempDir(), "settings.db")
 	api := newAPIHandler(Config{
-		SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
+		SettingsDBPath:          settingsPath,
 		WorkspaceDir:            filepath.Join(t.TempDir(), "workspace"),
 		AgentBridgeToken:        "test-token",
 		DisableGenerationWorker: true,
+	})
+	for _, dbPath := range []string{settingsPath, api.workspaceState.DatabasePath()} {
+		db, err := repository.OpenGormSQLite(dbPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CloseDB(t, db)
+	}
+	t.Cleanup(func() {
+		if err := api.Close(); err != nil {
+			t.Errorf("closing internal event API: %v", err)
+		}
 	})
 	router := gin.New()
 	internalHandler := httphandlers.NewInternalEvents(api.agentBridgeToken, api)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -208,15 +209,23 @@ func mcpExecutable(binaryName string) (string, error) {
 	if executable == "" {
 		return "", nil
 	}
+	binaryNames := []string{binaryName}
+	if runtime.GOOS == "windows" && filepath.Ext(binaryName) == "" {
+		binaryNames = []string{binaryName + ".exe", binaryName}
+	}
 	candidates := []string{}
-	if filepath.Base(executable) == binaryName {
-		candidates = append(candidates, executable)
-	} else {
-		candidates = append(candidates, filepath.Join(filepath.Dir(executable), binaryName))
+	for _, candidateName := range binaryNames {
+		if strings.EqualFold(filepath.Base(executable), candidateName) {
+			candidates = append(candidates, executable)
+		} else {
+			candidates = append(candidates, filepath.Join(filepath.Dir(executable), candidateName))
+		}
 	}
 	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 		for _, dir := range ancestorDirs(cwd, 8) {
-			candidates = append(candidates, filepath.Join(dir, "bin", binaryName))
+			for _, candidateName := range binaryNames {
+				candidates = append(candidates, filepath.Join(dir, "bin", candidateName))
+			}
 		}
 	}
 

@@ -362,7 +362,7 @@ func TestHasPreparedAgentRequiresCodexCompanion(t *testing.T) {
 		ID:           "codex",
 		Bin:          "codex-acp",
 		Version:      "1.1.2",
-		CodexBin:     filepath.Join("codex", "vendor", "aarch64-apple-darwin", "bin", "codex"),
+		CodexBin:     "codex/vendor/aarch64-apple-darwin/bin/codex",
 		CodexVersion: "0.144.0",
 	}
 	raw := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"codex/vendor/aarch64-apple-darwin/bin/codex","codexVersion":"0.144.0"}`

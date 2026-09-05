@@ -5,6 +5,7 @@ import type {
 	AgentTurnOutcome,
 } from "@/domains/agent/stores";
 import { adaptAgentMessagesToTurnItems } from "@/domains/agent/lib/agent-thread-adapter";
+import { settlePlanEntries } from "@/domains/agent/lib/plan-progress";
 
 export interface AgentTurnProjectionState {
 	lifecycle?: AgentTurnLifecycle;
@@ -145,7 +146,7 @@ const finalizeTurnViewModel = (
 			? (explicitOutcome ?? inferredOutcome(turn.finalAnswerItems, turn.messages))
 			: null;
 	const timing = turnTiming(turn, lifecycle, projection, now);
-	const processItems = settleTerminalPlanEntries(turn.processItems, lifecycle, outcome);
+	const processItems = settleTerminalPlanEntries(turn.processItems, lifecycle);
 	const processSummary = summarizeProcess(processItems, lifecycle, outcome, timing.durationMs);
 
 	return {
@@ -163,11 +164,7 @@ const finalizeTurnViewModel = (
 	};
 };
 
-const settleTerminalPlanEntries = (
-	items: AgentMessage[],
-	lifecycle: AgentTurnLifecycle,
-	outcome: AgentTurnOutcome | null,
-) => {
+const settleTerminalPlanEntries = (items: AgentMessage[], lifecycle: AgentTurnLifecycle) => {
 	if (lifecycle !== "completed") return items;
 
 	return items.map((message) => {
@@ -176,16 +173,7 @@ const settleTerminalPlanEntries = (
 			return message;
 		}
 
-		const planEntries = entries.map((entry) => {
-			if (
-				outcome === "succeeded" &&
-				(entry.status === "pending" || entry.status === "in_progress")
-			) {
-				return { ...entry, status: "completed" };
-			}
-			if (entry.status === "in_progress") return { ...entry, status: "pending" };
-			return entry;
-		});
+		const planEntries = settlePlanEntries(entries);
 
 		return {
 			...message,

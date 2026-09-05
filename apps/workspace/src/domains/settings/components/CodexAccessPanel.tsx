@@ -3,6 +3,7 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
+import { generationModelsKey } from "@/domains/generation/api/generation";
 import {
 	type CodexLoginAttempt,
 	beginCodexAccountLogin,
@@ -32,6 +33,7 @@ export const CodexAccessPanel: React.FC = () => {
 	const refreshAccount = useCallback(async () => {
 		await mutate();
 		void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
+		void mutateGlobal(generationModelsKey, undefined, { revalidate: true });
 	}, [mutate, mutateGlobal]);
 
 	useEffect(() => {

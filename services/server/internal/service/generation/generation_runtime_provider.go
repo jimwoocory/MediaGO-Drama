@@ -8,6 +8,7 @@ import (
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/runtime"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/codeximage"
 )
 
 func (workflow *GenerationService) newGenerationProvider(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
@@ -19,6 +20,9 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 	}
 	if workflow.generationProviderFactory != nil {
 		return workflow.generationProviderFactory(route)
+	}
+	if route.Provider == coregeneration.ProviderCodexImage {
+		return &codeximage.Provider{StartSession: workflow.settings.NewCodexImageSession}, nil
 	}
 
 	speechSettings, err := workflow.settings.GetSpeechAPISettings(context.Background())
@@ -32,6 +36,7 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 
 	return runtime.NewProvider(runtime.Config{
 		Credentials:                   workflow.generationCredentialResolver(),
+		UnifiedBaseURL:                workflow.settings.AIHubMixBaseURL(),
 		MultimodalTextProviderFactory: workflow.multimodalTextProviderFactory,
 		OpenRouterAppName:             "mediago-drama",
 		MediagoBaseURL:                workflow.mediagoBaseURL,
@@ -113,6 +118,22 @@ func (workflow *GenerationService) generationRouteConfiguredWithMediagoModels(
 		return false
 	}
 	if route.Status != coregeneration.RouteStatusAvailable {
+		return false
+	}
+	if route.Provider == coregeneration.ProviderCodexImage {
+		return workflow.settings.CodexImageAvailable(context.Background())
+	}
+	if route.Provider == coregeneration.ProviderUnified {
+		models, err := workflow.settings.ListUnifiedModels(context.Background(), false)
+		if err != nil {
+			return false
+		}
+		for _, model := range models.Models {
+			candidate, ok := coregeneration.UnifiedRoute(model.ID, model.Protocol)
+			if ok && model.Enabled && candidate.ID == route.ID {
+				return workflow.generationRouteCredentialsConfigured(route)
+			}
+		}
 		return false
 	}
 	if !workflow.settings.GenerationProviderEnabled(route.Provider) {

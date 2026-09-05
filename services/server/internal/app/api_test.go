@@ -65,14 +65,23 @@ func TestAPIHandler(t *testing.T) {
 		if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
 			t.Fatalf("decoding production profile inventory: %v", err)
 		}
-		if envelope.Data.SchemaVersion != 1 || len(envelope.Data.Profiles) != 0 {
-			t.Fatalf("production profile inventory = %#v, want empty verified registry v1", envelope.Data)
+		if envelope.Data.SchemaVersion != 1 || len(envelope.Data.Profiles) != 6 {
+			t.Fatalf("production profile inventory = %#v, want six built-in profiles v1", envelope.Data)
+		}
+		wantProfiles := map[string]bool{"animation": true, "live-action": true, "comic-drama": true, "short-drama": true, "cinematic": true, "explainer": true}
+		for _, profile := range envelope.Data.Profiles {
+			id, _ := profile["id"].(string)
+			if !wantProfiles[id] {
+				t.Fatalf("unexpected or duplicate production profile %q", id)
+			}
+			delete(wantProfiles, id)
 		}
 	})
 
 	t.Run("Codex skill inventory is read only and separate from prompt pack skills", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
 		t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 		skillDir := filepath.Join(home, ".agents", "skills", "route-check")
 		if err := os.MkdirAll(skillDir, 0o755); err != nil {
@@ -463,9 +472,9 @@ func TestAPIHandler(t *testing.T) {
 
 	t.Run("episode preview serves generated timeline video", func(t *testing.T) {
 		dbPath := filepath.Join(t.TempDir(), "settings.db")
-		ffmpegPath := filepath.Join(t.TempDir(), "ffmpeg")
+		ffmpegPath := filepath.Join(t.TempDir(), "ffmpeg.exe")
 		writeFakeFFmpegForTest(t, ffmpegPath)
-		previewHandler := NewHandlerWithConfig(
+		previewHandler := newTestHandlerWithConfig(t,
 			fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 			Config{
 				SettingsDBPath:          dbPath,
@@ -477,7 +486,6 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
-		closeTestHandler(t, previewHandler)
 		project, _ := createExternalProjectForTest(t, previewHandler, "Episode Preview")
 		projectID := project.ID
 		create := requestJSON(t, previewHandler, http.MethodPost, "/api/v1/workspace/documents?projectId="+url.QueryEscape(projectID), `{"title":"第一集","content":"# 第一集","category":"storyboard"}`)
@@ -932,7 +940,7 @@ func TestAPIHandler(t *testing.T) {
 
 	t.Run("document operations passes project id to runner", func(t *testing.T) {
 		requests := make(chan documentOperationsRequest, 1)
-		projectHandler := NewHandlerWithConfig(
+		projectHandler := newTestHandlerWithConfig(t,
 			fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 			Config{
 				SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
@@ -942,7 +950,6 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: recordingDocumentOperationRunner{requests: requests},
 			},
 		)
-		closeTestHandler(t, projectHandler)
 		response := requestJSON(t, projectHandler, http.MethodPost, "/api/v1/agent/document-operations", `{"projectId":"project-doc-ops","prompt":"帮我生成角色","document":{"id":"doc-test","title":"Episode Test","content":"# Episode Test"}}`)
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusOK {
@@ -959,7 +966,7 @@ func TestAPIHandler(t *testing.T) {
 	})
 
 	t.Run("document operations endpoint falls back after invalid runner response", func(t *testing.T) {
-		fallbackHandler := NewHandlerWithConfig(
+		fallbackHandler := newTestHandlerWithConfig(t,
 			fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 			Config{
 				SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
@@ -969,7 +976,6 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: invalidDocumentOperationRunner{},
 			},
 		)
-		closeTestHandler(t, fallbackHandler)
 
 		response := requestJSON(t, fallbackHandler, http.MethodPost, "/api/v1/agent/document-operations", `{"prompt":"帮我生成角色","document":{"id":"doc-test","title":"Episode Test","content":"# Episode Test"}}`)
 		defer response.Body.Close()
@@ -1043,7 +1049,7 @@ func TestAPIHandler(t *testing.T) {
 
 	t.Run("message passes runtime config selections to runner", func(t *testing.T) {
 		requests := make(chan agentRunRequest, 1)
-		agentHandler := NewHandlerWithConfig(
+		agentHandler := newTestHandlerWithConfig(t,
 			fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 			Config{
 				SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
@@ -1053,7 +1059,6 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
-		closeTestHandler(t, agentHandler)
 		sessionID := createAgentSessionForProject(t, agentHandler, "")
 		payload := `{"sessionId":"` + sessionID + `","prompt":"hello","model":{"source":"model","value":"gpt-5"},"reasoning":{"source":"configOption","configId":"reasoning_effort","value":"high"},"permission":{"source":"mode","value":"ask"}}`
 		response := requestJSON(t, agentHandler, http.MethodPost, "/api/v1/agent/message", payload)
@@ -1074,7 +1079,7 @@ func TestAPIHandler(t *testing.T) {
 
 	t.Run("message accepts document category context", func(t *testing.T) {
 		requests := make(chan agentRunRequest, 1)
-		agentHandler := NewHandlerWithConfig(
+		agentHandler := newTestHandlerWithConfig(t,
 			fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 			Config{
 				SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
@@ -1084,7 +1089,6 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
-		closeTestHandler(t, agentHandler)
 		sessionID := createAgentSessionForProject(t, agentHandler, "")
 		payload := `{"sessionId":"` + sessionID + `","prompt":"hello","document":{"id":"doc-1","title":"剧本","content":"# 剧本","category":"screenplay"},"documents":[{"id":"doc-1","title":"剧本","content":"# 剧本","category":"screenplay","version":1}]}`
 		response := requestJSON(t, agentHandler, http.MethodPost, "/api/v1/agent/message", payload)
@@ -1109,7 +1113,7 @@ func TestAPIHandler(t *testing.T) {
 	t.Run("message uses backend-owned fixed system prompt", func(t *testing.T) {
 		requests := make(chan agentRunRequest, 1)
 		workspaceDir := filepath.Join(t.TempDir(), "workspace")
-		agentHandler := NewHandlerWithConfig(
+		agentHandler := newTestHandlerWithConfig(t,
 			fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 			Config{
 				SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
@@ -1119,7 +1123,6 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
-		closeTestHandler(t, agentHandler)
 		sessionID := createAgentSessionForProject(t, agentHandler, "")
 		response := requestJSON(t, agentHandler, http.MethodPost, "/api/v1/agent/message", `{"sessionId":"`+sessionID+`","prompt":"hello"}`)
 		defer response.Body.Close()
@@ -1146,7 +1149,7 @@ func TestAPIHandler(t *testing.T) {
 	t.Run("message passes project directory to runner", func(t *testing.T) {
 		requests := make(chan agentRunRequest, 1)
 		workspaceDir := filepath.Join(t.TempDir(), "workspace")
-		agentHandler := NewHandlerWithConfig(
+		agentHandler := newTestHandlerWithConfig(t,
 			fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 			Config{
 				SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
@@ -1156,7 +1159,6 @@ func TestAPIHandler(t *testing.T) {
 				documentOperationRunner: fakeDocumentOperationRunner{},
 			},
 		)
-		closeTestHandler(t, agentHandler)
 		project, projectDir := createExternalProjectForTest(t, agentHandler, "Agent Cwd")
 		sessionID := createAgentSessionForProject(t, agentHandler, project.ID)
 		payload, err := json.Marshal(map[string]string{
@@ -1891,7 +1893,7 @@ func TestCancelRunImmediatelyCancelsPendingSelections(t *testing.T) {
 	started := make(chan agentRunRequest, 1)
 	release := make(chan struct{})
 	defer close(release)
-	rawHandler := NewHandlerWithConfig(
+	rawHandler := newTestHandlerWithConfig(t,
 		fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 		Config{
 			SettingsDBPath:          filepath.Join(t.TempDir(), "settings.db"),
@@ -1904,7 +1906,6 @@ func TestCancelRunImmediatelyCancelsPendingSelections(t *testing.T) {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
-	closeTestHandler(t, rawHandler)
 	handler, ok := rawHandler.(*Handler)
 	if !ok {
 		t.Fatalf("handler = %T, want *Handler", rawHandler)
@@ -1972,7 +1973,7 @@ func TestCancelRunImmediatelyCancelsPendingSelections(t *testing.T) {
 func newTestHandler(t *testing.T, dbPath string) http.Handler {
 	t.Helper()
 
-	handler := NewHandlerWithConfig(
+	handler := newTestHandlerWithConfig(t,
 		fstest.MapFS{
 			"index.html": {
 				Data: []byte("<html>workspace</html>"),
@@ -1989,7 +1990,6 @@ func newTestHandler(t *testing.T, dbPath string) http.Handler {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
-	closeTestHandler(t, handler)
 	return handler
 }
 
@@ -2136,19 +2136,19 @@ func uploadImageAssetForTest(t *testing.T, handler http.Handler, projectID strin
 
 func writeFakeFFmpegForTest(t *testing.T, path string) {
 	t.Helper()
-	script := `#!/bin/sh
-last=""
-for arg in "$@"; do
-	last="$arg"
-done
-if [ "$last" = "pipe:1" ]; then
-	printf fragmented-mp4
-else
-	printf rendered-mp4 > "$last"
-fi
-`
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake ffmpeg: %v", err)
+	t.Setenv("JW_APP_FFMPEG_FIXTURE", "1")
+	source, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(source, path); err != nil {
+		content, err := os.ReadFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, content, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
