@@ -45,6 +45,20 @@ export const pickDesktopDirectory = async (title: string) => {
 	return null;
 };
 
+export const setDesktopWorkspaceDirectory = async (directory: string) => {
+	if (desktopRuntime() !== "electron") {
+		throw new Error("当前运行环境不支持切换项目数据目录。");
+	}
+	await window.mediagoDesktop?.setWorkspaceDirectory(directory);
+};
+
+export const resetDesktopWorkspaceDirectory = async () => {
+	if (desktopRuntime() !== "electron") {
+		throw new Error("当前运行环境不支持恢复默认项目数据目录。");
+	}
+	await window.mediagoDesktop?.resetWorkspaceDirectory();
+};
+
 export const pickDesktopFile = async ({
 	filters,
 	title,

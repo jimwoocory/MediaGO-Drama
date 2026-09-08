@@ -39,6 +39,9 @@ const api = {
 		ipcRenderer.invoke(desktopIpcChannel.pickDirectory, options),
 	pickFile: (options?: { title?: string; filters?: DesktopFileFilter[] }) =>
 		ipcRenderer.invoke(desktopIpcChannel.pickFile, options),
+	setWorkspaceDirectory: (directory: string) =>
+		ipcRenderer.invoke(desktopIpcChannel.setWorkspaceDirectory, directory),
+	resetWorkspaceDirectory: () => ipcRenderer.invoke(desktopIpcChannel.resetWorkspaceDirectory),
 	savePromptPack: (options: DesktopPromptPackSaveOptions) =>
 		ipcRenderer.invoke(
 			desktopIpcChannel.savePromptPack,

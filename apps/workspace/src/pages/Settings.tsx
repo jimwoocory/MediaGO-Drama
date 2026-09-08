@@ -81,7 +81,12 @@ import { ProjectSettings } from "@/pages/ProjectSettings";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
-import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
+import {
+	openExternalUrl,
+	pickDesktopDirectory,
+	resetDesktopWorkspaceDirectory,
+	setDesktopWorkspaceDirectory,
+} from "@/shared/desktop/actions";
 import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
 
 const jianyingDraftSettingsEnabled: boolean = false;
@@ -1539,6 +1544,7 @@ const AppearancePanel: React.FC<{
 	const toast = useToast();
 	const { data: projectsPayload } = useSWR(projectsKey, getProjects);
 	const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
+	const [isChangingWorkspace, setIsChangingWorkspace] = useState(false);
 	const selectedThemeOption =
 		themeModeOptions.find((option) => option.value === mode) ?? themeModeOptions[0];
 	const workspaceDir = projectsPayload?.workspaceDir ?? "";
@@ -1558,6 +1564,55 @@ const AppearancePanel: React.FC<{
 		}
 	};
 
+	const chooseWorkspaceDir = async () => {
+		if (isChangingWorkspace) return;
+		const selected = await pickDesktopDirectory("选择项目数据目录");
+		if (!selected) return;
+		void confirmDialog({
+			title: "切换项目数据目录？",
+			description: `应用将重启并使用 ${selected}。现有文件不会被移动或删除；如需继续使用已有项目，请选择包含 projects 文件夹的原目录。`,
+			confirmLabel: "切换并重启",
+			variant: "default",
+			onConfirm: async () => {
+				setIsChangingWorkspace(true);
+				try {
+					await setDesktopWorkspaceDirectory(selected);
+					return true;
+				} catch (err) {
+					const message = err instanceof Error ? err.message : "切换项目数据目录失败。";
+					toast.error("切换失败", { description: message });
+					return false;
+				} finally {
+					setIsChangingWorkspace(false);
+				}
+			},
+		});
+	};
+
+	const resetWorkspaceDir = () => {
+		if (isChangingWorkspace) return;
+		void confirmDialog({
+			title: "恢复默认项目数据目录？",
+			description:
+				"应用将重启并改回运行包旁的 data/workspace。手动选择的目录和其中的文件不会被删除。",
+			confirmLabel: "恢复默认并重启",
+			variant: "default",
+			onConfirm: async () => {
+				setIsChangingWorkspace(true);
+				try {
+					await resetDesktopWorkspaceDirectory();
+					return true;
+				} catch (err) {
+					const message = err instanceof Error ? err.message : "恢复默认项目数据目录失败。";
+					toast.error("恢复失败", { description: message });
+					return false;
+				} finally {
+					setIsChangingWorkspace(false);
+				}
+			},
+		});
+	};
+
 	return (
 		<SettingsPanelLayout
 			title="基础设置"
@@ -1567,27 +1622,57 @@ const AppearancePanel: React.FC<{
 			<div className="divide-y divide-border">
 				<div className="flex flex-wrap items-center justify-between gap-3 pb-5">
 					<div className="min-w-0 flex-1">
-						<p className="text-sm font-medium text-foreground">全局目录</p>
+						<p className="text-sm font-medium text-foreground">项目数据目录</p>
 						<p className="mt-1 truncate text-xs text-muted-foreground">
 							{workspaceDir || "正在读取工作区目录"}
 						</p>
+						<p className="mt-1 text-xs text-muted-foreground">
+							手动选择后会在重启时生效，后续更换运行包仍使用该目录。
+						</p>
 					</div>
-					<Button
-						type="button"
-						variant="secondary"
-						size="sm"
-						className="shrink-0"
-						disabled={!canOpenWorkspaceDir || isOpeningWorkspace}
-						onClick={() => void openWorkspaceDir()}
-						title={canOpenWorkspaceDir ? "打开全局目录" : "当前运行环境不支持打开本地文件夹"}
-					>
-						{isOpeningWorkspace ? (
-							<Loader2 className="size-3.5 animate-spin" />
-						) : (
-							<FolderOpen className="size-3.5" />
-						)}
-						<span>打开</span>
-					</Button>
+					<div className="flex shrink-0 flex-wrap items-center gap-2">
+						<Button
+							type="button"
+							variant="secondary"
+							size="sm"
+							disabled={!isDesktopRuntime() || isChangingWorkspace}
+							onClick={() => void chooseWorkspaceDir()}
+							title={
+								isDesktopRuntime() ? "手动选择项目数据目录" : "当前运行环境不支持选择本地文件夹"
+							}
+						>
+							{isChangingWorkspace ? (
+								<Loader2 className="size-3.5 animate-spin" />
+							) : (
+								<FolderOpen className="size-3.5" />
+							)}
+							<span>选择路径</span>
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={!isDesktopRuntime() || isChangingWorkspace}
+							onClick={resetWorkspaceDir}
+						>
+							<span>恢复默认</span>
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={!canOpenWorkspaceDir || isOpeningWorkspace}
+							onClick={() => void openWorkspaceDir()}
+							title={canOpenWorkspaceDir ? "打开项目数据目录" : "当前运行环境不支持打开本地文件夹"}
+						>
+							{isOpeningWorkspace ? (
+								<Loader2 className="size-3.5 animate-spin" />
+							) : (
+								<FolderOpen className="size-3.5" />
+							)}
+							<span>打开</span>
+						</Button>
+					</div>
 				</div>
 				<div className="flex flex-wrap items-center justify-between gap-3 pt-5">
 					<div className="min-w-0 flex-1">

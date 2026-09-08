@@ -29,7 +29,13 @@ const (
 	codexRelayLocalTokenEnv     = "MEDIAGO_CODEX_RELAY_TOKEN"
 	unifiedCodexRelayProfileID  = "unified-openai-compatible"
 	unifiedCodexRelayModel      = "gpt-5"
-	codexRelayDefaultHTTPClient = 60 * time.Second
+	// Agent turns with high reasoning can legitimately need more than a minute
+	// before the upstream sends its first response. A 60-second deadline turns
+	// that normal wait into a local 502 and makes the ACP client reconnect in a
+	// loop. The request context still allows cancellation when the user stops
+	// the run; this limit only prevents an unattended request from waiting
+	// forever.
+	codexRelayDefaultHTTPClient = 5 * time.Minute
 	codexRelayCheckHTTPClient   = 10 * time.Second
 	codexRelayCheckBodyLimit    = 1024 * 1024
 )

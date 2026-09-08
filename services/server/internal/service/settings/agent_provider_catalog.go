@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // writeAgentProviderModelCatalog describes the bridge contract, not unverified
@@ -69,7 +70,21 @@ func agentModelContextWindow(models []openAIModelListItem, model string) int {
 			return window
 		}
 	}
+	if window := documentedAgentModelContextWindow(model); window != 0 {
+		return window
+	}
 	return defaultAgentContextWindow
+}
+
+// documentedAgentModelContextWindow covers model families whose providers
+// commonly omit context metadata from /models. A declared upstream limit always
+// wins above, so this only prevents an artificial conservative fallback.
+func documentedAgentModelContextWindow(model string) int {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if normalized == "deepseek-v4-pro" || strings.HasPrefix(normalized, "deepseek-v4-pro-") {
+		return 1_000_000
+	}
+	return 0
 }
 
 func agentModelCompactLimit(window int) int {

@@ -65,6 +65,20 @@ func (client *acpClient) RequestPermission(ctx context.Context, params acp.Reque
 		}, nil
 	}
 
+	if client.autoApprovePermissions {
+		if option := PreferredPermissionOption(params.Options); option != nil {
+			acpLog().Info(
+				"acp permission automatically selected",
+				client.logAttrs("title", title, "option_id", option.OptionId, "option_kind", option.Kind)...,
+			)
+			return acp.RequestPermissionResponse{
+				Outcome: acp.RequestPermissionOutcome{
+					Selected: &acp.RequestPermissionOutcomeSelected{OptionId: option.OptionId},
+				},
+			}, nil
+		}
+	}
+
 	requestID := MustRandomID("permission")
 	decisionCh := make(chan permissionDecision, 1)
 	permissionRequest := AgentACPPermissionRequest{

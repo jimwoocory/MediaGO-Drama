@@ -49,11 +49,12 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	acpLog().Info("acp run starting", logArgs...)
 	rawLog := newACPRawLogger(workspaceDir, request.ProjectDir, request.ProjectID, request.SessionID, request.RunID)
 	client := &acpClient{
-		publish:      publish,
-		workspaceDir: workspaceDir,
-		sessionID:    request.SessionID,
-		runID:        request.RunID,
-		rawLog:       rawLog,
+		publish:                publish,
+		workspaceDir:           workspaceDir,
+		sessionID:              request.SessionID,
+		runID:                  request.RunID,
+		rawLog:                 rawLog,
+		autoApprovePermissions: shouldAutoApproveACPPermissions(request.Permission),
 	}
 
 	fixedInstructions := runner.fixedInstructions(request)

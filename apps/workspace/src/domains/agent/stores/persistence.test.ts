@@ -9,8 +9,8 @@ const loadStore = async () => {
 	return module;
 };
 
-const persistState = (state: Record<string, unknown>) => {
-	localStorage.setItem(STORE_KEY, JSON.stringify({ state, version: 1 }));
+const persistState = (state: Record<string, unknown>, version = 3) => {
+	localStorage.setItem(STORE_KEY, JSON.stringify({ state, version }));
 };
 
 const persistedState = () =>
@@ -103,7 +103,7 @@ describe("agent persistence store", () => {
 					},
 				},
 			},
-			version: 1,
+			version: 3,
 		});
 
 		useAgentPersistenceStore.getState().setRuntimeConfigValue("project-1", "model", "");
@@ -115,5 +115,43 @@ describe("agent persistence store", () => {
 		expect(persistedState().state?.runtimeConfigByProject?.["project-1"]).toEqual({
 			reasoning: "high",
 		});
+	});
+
+	it("upgrades the legacy ask default to automatic permission approval", async () => {
+		persistState(
+			{
+				runtimeConfigDefaults: { permission: "ask" },
+				runtimeConfigByProject: { "project-1": { permission: "ask" } },
+			},
+			1,
+		);
+
+		const { useAgentPersistenceStore } = await loadStore();
+
+		expect(useAgentPersistenceStore.getState().runtimeConfigDefaults.permission).toBe(
+			"full-access",
+		);
+		expect(
+			useAgentPersistenceStore.getState().runtimeConfigByProject["project-1"]?.permission,
+		).toBe("full-access");
+	});
+
+	it("upgrades the previous agent default to agent full access", async () => {
+		persistState(
+			{
+				runtimeConfigDefaults: { permission: "agent" },
+				runtimeConfigByProject: { "project-1": { permission: "agent" } },
+			},
+			2,
+		);
+
+		const { useAgentPersistenceStore } = await loadStore();
+
+		expect(useAgentPersistenceStore.getState().runtimeConfigDefaults.permission).toBe(
+			"agent-full-access",
+		);
+		expect(
+			useAgentPersistenceStore.getState().runtimeConfigByProject["project-1"]?.permission,
+		).toBe("agent-full-access");
 	});
 });

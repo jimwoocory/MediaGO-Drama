@@ -99,7 +99,18 @@ export const useAgentPersistenceStore = create<AgentPersistenceState>()(
 		{
 			name: agentPersistenceStoreKey,
 			storage: createJSONStorage(() => localStorage),
-			version: 1,
+			version: 3,
+			migrate: (persisted, version) => {
+				if (version >= 3 || !persisted || typeof persisted !== "object") return persisted;
+				const legacy = persisted as Record<string, unknown>;
+				return {
+					...legacy,
+					runtimeConfigDefaults: upgradeLegacyPermissionPreference(legacy.runtimeConfigDefaults),
+					runtimeConfigByProject: upgradeLegacyProjectPermissionPreferences(
+						legacy.runtimeConfigByProject,
+					),
+				};
+			},
 			partialize: (state) => ({
 				documentRuntimeMode: state.documentRuntimeMode,
 				runtimeConfigDefaults: state.runtimeConfigDefaults,
@@ -167,6 +178,23 @@ const normalizeRuntimeConfig = (value: unknown) => {
 	}
 
 	return normalized;
+};
+
+const upgradeLegacyPermissionPreference = (value: unknown) => {
+	const normalized = normalizeRuntimeConfig(value);
+	if (normalized.permission === "ask") normalized.permission = "full-access";
+	if (normalized.permission === "agent") normalized.permission = "agent-full-access";
+	return normalized;
+};
+
+const upgradeLegacyProjectPermissionPreferences = (value: unknown) => {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const upgraded: Record<string, PersistedAgentRuntimeConfig> = {};
+	for (const [projectId, config] of Object.entries(value)) {
+		const normalized = upgradeLegacyPermissionPreference(config);
+		if (Object.keys(normalized).length > 0) upgraded[projectId] = normalized;
+	}
+	return upgraded;
 };
 
 const normalizeSessionIdsByProject = (value: unknown) => {

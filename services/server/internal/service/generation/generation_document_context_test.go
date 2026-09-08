@@ -419,3 +419,42 @@ func TestApplyGenerationDocumentContextInfersResourceTypeFromDocumentCategory(t 
 		})
 	}
 }
+
+func TestApplyGenerationDocumentContextNormalizesTopLevelDocumentFields(t *testing.T) {
+	workflow := NewGenerationService(nil, nil, nil)
+	workflow.SetDocumentResolver(fakeGenerationDocumentResolver{
+		documents: map[string]mediamcp.WorkspaceDocument{
+			"character-doc": {
+				ID:       "character-doc",
+				Category: "character",
+				Content: strings.Join([]string{
+					"<!-- section-id: section_lin -->",
+					"## 林书彤",
+					"",
+					"21 岁女大学生。",
+				}, "\n"),
+			},
+		},
+	})
+
+	// This is the shape sent by generate_media when an Agent targets a
+	// document section directly. It must behave exactly like documentContext.
+	payload := generationMessageRequest{
+		ProjectID:  "project-a",
+		DocumentID: "character-doc",
+		SectionID:  "section_lin",
+		Prompt:     "为林书彤生成角色设定图。",
+	}
+	if err := workflow.applyGenerationDocumentContext(&payload); err != nil {
+		t.Fatalf("applyGenerationDocumentContext() error = %v", err)
+	}
+	if payload.DocumentContext == nil {
+		t.Fatal("document context = nil, want normalized top-level document fields")
+	}
+	if payload.DocumentContext.DocumentID != "character-doc" || payload.DocumentContext.SectionID != "section_lin" {
+		t.Fatalf("document context = %+v, want character-doc/section_lin", payload.DocumentContext)
+	}
+	if got := GenerationResourceTypeForRequest(payload); got != "character" {
+		t.Fatalf("resource type = %q, want character", got)
+	}
+}

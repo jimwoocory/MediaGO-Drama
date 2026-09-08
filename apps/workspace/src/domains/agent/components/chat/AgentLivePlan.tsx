@@ -7,7 +7,11 @@ import type {
 	AgentMessage,
 } from "@/domains/agent/stores";
 import { findLastIndex, isTerminalConversationStatus } from "@/domains/agent/stores/conversation";
-import { planExecutionProgress, settlePlanEntries } from "@/domains/agent/lib/plan-progress";
+import {
+	planExecutionProgress,
+	reconcilePlanEntriesWithCompletedDocumentWrites,
+	settlePlanEntries,
+} from "@/domains/agent/lib/plan-progress";
 import { cn } from "@/shared/lib/utils";
 import { PlanBlock } from "../timeline/PlanBlock";
 
@@ -69,7 +73,12 @@ export const AgentLivePlan: React.FC<AgentLivePlanProps> = ({
 
 	const terminal = status !== undefined && isTerminalConversationStatus(status);
 	if ((!isRunning && !terminal) || !plan || !runId) return null;
-	const entries = terminal ? settlePlanEntries(plan.entries) : plan.entries;
+	const reconciledEntries = reconcilePlanEntriesWithCompletedDocumentWrites(
+		plan.entries,
+		messages,
+		runId,
+	);
+	const entries = terminal ? settlePlanEntries(reconciledEntries) : reconciledEntries;
 	const execution = planExecutionProgress(messages, runId, plan.toolStates);
 	const hasLaterActivity = execution.completed + execution.failed + execution.running > 0;
 	const unconfirmed = entries.filter((entry) => entry.status === "unconfirmed").length;

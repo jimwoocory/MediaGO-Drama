@@ -110,6 +110,39 @@ func TestACPClientRequestPermissionPublishesResolutionOnDecision(t *testing.T) {
 	}
 }
 
+func TestACPClientRequestPermissionAutomaticallyAllowsByDefault(t *testing.T) {
+	events := make(chan agentEvent, 1)
+	client := &acpClient{
+		autoApprovePermissions: true,
+		publish: func(event agentEvent) {
+			events <- event
+		},
+	}
+
+	response, err := client.RequestPermission(context.Background(), acp.RequestPermissionRequest{
+		SessionId: "session-1",
+		ToolCall:  acp.ToolCallUpdate{ToolCallId: "call-execute"},
+		Options: []acp.PermissionOption{
+			{Kind: acp.PermissionOptionKindAllowOnce, Name: "Allow once", OptionId: "allow-once"},
+			{Kind: acp.PermissionOptionKindRejectOnce, Name: "Reject", OptionId: "reject"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RequestPermission returned error: %v", err)
+	}
+	if response.Outcome.Selected == nil || response.Outcome.Selected.OptionId != "allow-once" {
+		t.Fatalf("response = %#v, want automatic allow-once selection", response)
+	}
+	if pending := client.PendingPermissions(); len(pending) != 0 {
+		t.Fatalf("pending = %#v, want no visible permission request", pending)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("event = %#v, want no interactive permission event", event)
+	default:
+	}
+}
+
 func TestACPClientRequestPermissionPublishesResolutionOnContextCancel(t *testing.T) {
 	events := make(chan agentEvent, 8)
 	client := &acpClient{

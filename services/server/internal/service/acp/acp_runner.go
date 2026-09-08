@@ -59,37 +59,38 @@ type permissionDecision struct {
 }
 
 type acpClient struct {
-	publish             func(agentEvent)
-	workspaceDir        string
-	sessionID           string
-	runID               string
-	acpSessionID        string
-	rawLog              *acpRawLogger
-	mu                  sync.Mutex
-	acceptUpdate        bool
-	message             strings.Builder
-	messageItem         strings.Builder
-	activeMessageItemID string
-	streamedMessage     bool
-	runtimeErrorMessage string
-	promptCancel        context.CancelCauseFunc
-	promptStartedAt     time.Time
-	firstUpdateLogged   bool
-	updateCount         int
-	activityUpdateCount int
-	messageChunkCount   int
-	thoughtChunkCount   int
-	toolCallCount       int
-	toolCallStarts      map[string]time.Time
-	dsmlCarry           string
-	dsmlInside          bool
-	pendingPermissions  sync.Map
-	pendingRequests     sync.Map
-	permissionTimeout   time.Duration
-	thoughtMu           sync.Mutex
-	thoughtBuf          strings.Builder
-	thoughtItemID       string
-	thoughtTimer        *time.Timer
+	publish                func(agentEvent)
+	workspaceDir           string
+	sessionID              string
+	runID                  string
+	acpSessionID           string
+	rawLog                 *acpRawLogger
+	mu                     sync.Mutex
+	acceptUpdate           bool
+	message                strings.Builder
+	messageItem            strings.Builder
+	activeMessageItemID    string
+	streamedMessage        bool
+	runtimeErrorMessage    string
+	promptCancel           context.CancelCauseFunc
+	promptStartedAt        time.Time
+	firstUpdateLogged      bool
+	updateCount            int
+	activityUpdateCount    int
+	messageChunkCount      int
+	thoughtChunkCount      int
+	toolCallCount          int
+	toolCallStarts         map[string]time.Time
+	dsmlCarry              string
+	dsmlInside             bool
+	pendingPermissions     sync.Map
+	pendingRequests        sync.Map
+	permissionTimeout      time.Duration
+	autoApprovePermissions bool
+	thoughtMu              sync.Mutex
+	thoughtBuf             strings.Builder
+	thoughtItemID          string
+	thoughtTimer           *time.Timer
 }
 
 // NewACPAgentRunner creates an ACP-backed agent runner.
@@ -562,6 +563,21 @@ func applyACPSessionSelections(ctx context.Context, conn acpSessionConfigurator,
 		return err
 	}
 	return nil
+}
+
+// shouldAutoApproveACPPermissions keeps automatic approval as the default for
+// clients without a persisted preference. Selecting Ask explicitly restores
+// the interactive permission cards.
+func shouldAutoApproveACPPermissions(selection agentACPConfigSelection) bool {
+	value := strings.TrimSpace(selection.Value)
+	if value == "" {
+		return true
+	}
+	// Some ACP clients expose their unrestricted execution policy as "agent"
+	// instead of "agent-full-access". The workspace default is automatic tool
+	// approval, so both names must use the same policy.
+	normalized := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(value))
+	return normalized == "agent" || isACPAutoApprovePermissionMode(value)
 }
 
 func shouldApplyACPReasoningSelection(request agentRunRequest) bool {

@@ -13,7 +13,7 @@ import {
 } from "electron";
 import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
 	type DesktopFileFilter,
@@ -25,7 +25,12 @@ import {
 } from "./ipc-contract.js";
 import { assertTrustedIpcSender, normalizeDevelopmentRendererURL } from "./ipc-security.js";
 import { showDesktopSystemNotification } from "./desktop-notifications.js";
-import { preloadPath, rendererDistDir } from "./paths.js";
+import {
+	preloadPath,
+	resetPortableWorkspaceDir,
+	rendererDistDir,
+	setPortableWorkspaceDir,
+} from "./paths.js";
 import { parsePromptPackSaveRequest } from "./prompt-pack-save.js";
 import { normalizeExternalURL, resolveRendererNavigation } from "./navigation-security.js";
 import {
@@ -478,6 +483,30 @@ ipcMain.handle(
 		return result.canceled ? null : (result.filePaths[0] ?? null);
 	},
 );
+
+const relaunchIntoWorkspaceDirectory = () => {
+	setTimeout(() => {
+		app.relaunch();
+		app.exit(0);
+	}, 0);
+};
+
+ipcMain.handle(desktopIpcChannel.setWorkspaceDirectory, async (event, value: unknown) => {
+	authorizeDesktopIpc(event);
+	const directory = typeof value === "string" ? value.trim() : "";
+	if (!directory) throw new Error("workspace directory is required");
+	const selected = resolve(directory);
+	const info = await stat(selected);
+	if (!info.isDirectory()) throw new Error("workspace directory is not a folder");
+	setPortableWorkspaceDir(selected);
+	relaunchIntoWorkspaceDirectory();
+});
+
+ipcMain.handle(desktopIpcChannel.resetWorkspaceDirectory, (event) => {
+	authorizeDesktopIpc(event);
+	resetPortableWorkspaceDir();
+	relaunchIntoWorkspaceDirectory();
+});
 
 ipcMain.handle(desktopIpcChannel.savePromptPack, async (event, value: unknown) => {
 	authorizeDesktopIpc(event);

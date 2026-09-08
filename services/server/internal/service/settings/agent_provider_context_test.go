@@ -15,16 +15,19 @@ func TestAgentModelContextWindow(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		models []openAIModelListItem
+		model  string
 		want   int
 	}{
-		{"declared", []openAIModelListItem{{ID: "DeepSeek-V3.2", ContextLength: 131072}}, 131072},
-		{"aliases", []openAIModelListItem{{ID: "DeepSeek-V3.2", ContextLength: 131072, ContextWindow: 65536}}, 65536},
-		{"missing", nil, 32768},
-		{"different model", []openAIModelListItem{{ID: "deepseek-v3.2", ContextLength: 131072}}, 32768},
-		{"invalid", []openAIModelListItem{{ID: "DeepSeek-V3.2", ContextLength: -1, ContextWindow: 999999999}}, 32768},
+		{"declared", []openAIModelListItem{{ID: "DeepSeek-V3.2", ContextLength: 131072}}, "DeepSeek-V3.2", 131072},
+		{"aliases", []openAIModelListItem{{ID: "DeepSeek-V3.2", ContextLength: 131072, ContextWindow: 65536}}, "DeepSeek-V3.2", 65536},
+		{"known DeepSeek V4 fallback", nil, "deepseek-v4-pro-0813", 1_000_000},
+		{"declared DeepSeek V4 limit wins", []openAIModelListItem{{ID: "deepseek-v4-pro-0813", ContextLength: 131072}}, "deepseek-v4-pro-0813", 131072},
+		{"missing", nil, "DeepSeek-V3.2", 32768},
+		{"different model", []openAIModelListItem{{ID: "deepseek-v3.2", ContextLength: 131072}}, "DeepSeek-V3.2", 32768},
+		{"invalid", []openAIModelListItem{{ID: "DeepSeek-V3.2", ContextLength: -1, ContextWindow: 999999999}}, "DeepSeek-V3.2", 32768},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := agentModelContextWindow(tc.models, "DeepSeek-V3.2"); got != tc.want {
+			if got := agentModelContextWindow(tc.models, tc.model); got != tc.want {
 				t.Fatalf("window=%d want=%d", got, tc.want)
 			}
 		})

@@ -100,6 +100,21 @@ describe("AgentLivePlan", () => {
 		expect(screen.queryByTestId("agent-live-plan")).not.toBeInTheDocument();
 	});
 
+	it("labels plan priority separately from model reasoning effort", () => {
+		render(
+			<AgentLivePlan
+				isRunning
+				runId="run-1"
+				messages={[
+					planMessage([{ content: "创作场景", priority: "medium", status: "in_progress" }]),
+				]}
+			/>,
+		);
+
+		expect(screen.getByText("中优先级")).toBeInTheDocument();
+		expect(screen.queryByText("medium")).not.toBeInTheDocument();
+	});
+
 	it("shows a failed step with the error status treatment", () => {
 		const { container } = render(
 			<AgentLivePlan

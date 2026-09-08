@@ -45,6 +45,8 @@ export interface MediagoDesktopAPI {
 	}): Promise<DesktopDownloadResult>;
 	pickDirectory(options?: { title?: string }): Promise<string | null>;
 	pickFile(options?: { title?: string; filters?: DesktopFileFilter[] }): Promise<string | null>;
+	setWorkspaceDirectory(directory: string): Promise<void>;
+	resetWorkspaceDirectory(): Promise<void>;
 	savePromptPack(options: DesktopPromptPackSaveOptions): Promise<DesktopPromptPackSaveResult>;
 	showNotification(options: DesktopNotificationOptions): Promise<boolean>;
 	onNotificationClicked(callback: (id: string) => void): () => void;

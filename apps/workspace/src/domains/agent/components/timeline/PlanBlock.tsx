@@ -40,7 +40,9 @@ export const PlanBlock: React.FC<{
 									<span className="ml-1 text-2xs text-muted-foreground">未确认</span>
 								) : null}
 								{entry.priority ? (
-									<span className="ml-1 text-2xs text-muted-foreground">{entry.priority}</span>
+									<span className="ml-1 text-2xs text-muted-foreground">
+										{planPriorityLabel(entry.priority)}
+									</span>
 								) : null}
 							</span>
 						</li>
@@ -73,4 +75,17 @@ const planStatusIcon = (status: string) => {
 	if (status === "in_progress") return LoaderCircle;
 	if (status === "failed") return X;
 	return Circle;
+};
+
+const planPriorityLabel = (priority: string) => {
+	switch (priority) {
+		case "high":
+			return "高优先级";
+		case "medium":
+			return "中优先级";
+		case "low":
+			return "低优先级";
+		default:
+			return priority;
+	}
 };

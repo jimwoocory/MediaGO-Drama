@@ -95,9 +95,25 @@ func AgentRuntimeModeConfig(modes acp.SessionModeState) *AgentRuntimeSelectConfi
 	return &AgentRuntimeSelectConfig{
 		Name:         "权限",
 		Source:       AgentRuntimeConfigSourceMode,
-		CurrentValue: strings.TrimSpace(string(modes.CurrentModeId)),
+		CurrentValue: preferredACPPermissionMode(modes, options),
 		Options:      options,
 	}
+}
+
+// preferredACPPermissionMode makes unrestricted tool execution the default
+// when the agent exposes such a mode. Users can still explicitly select Ask.
+func preferredACPPermissionMode(modes acp.SessionModeState, options []AgentRuntimeSelectOption) string {
+	for _, option := range options {
+		if isACPAutoApprovePermissionMode(option.Value) {
+			return option.Value
+		}
+	}
+	return strings.TrimSpace(string(modes.CurrentModeId))
+}
+
+func isACPAutoApprovePermissionMode(value string) bool {
+	normalized := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(value)))
+	return normalized == "fullaccess" || normalized == "agentfullaccess" || normalized == "dangerfullaccess" || normalized == "yolo"
 }
 
 // AgentRuntimeSelectConfigFromACP maps one ACP select option.

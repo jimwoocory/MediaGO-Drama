@@ -331,20 +331,24 @@ func (service *Settings) BeginJimengLogin(ctx context.Context, force bool) (APIK
 
 func (service *Settings) startJimengLogin(ctx context.Context) (ProviderLoginChallenge, string, error) {
 	output, err := service.runJimengCommand(ctx, jimengLoginStartTimeout, "login", "--headless")
+	// jimeng emits the device challenge and then exits non-zero while it waits
+	// for browser authorization. That output is a valid pending login, not a
+	// failed start. Returning it lets the desktop open the authorization page.
+	login := parseJimengLoginChallenge(output)
+	if login.Status == "pending" {
+		if login.VerificationURI == "" || login.UserCode == "" || login.DeviceCode == "" {
+			return ProviderLoginChallenge{}, string(output), errors.New("jimeng login returned an incomplete device challenge")
+		}
+		if login.Message == "" {
+			login.Message = "即梦登录链接已生成，请在浏览器中完成登录。"
+		}
+		return login, string(output), nil
+	}
 	if err != nil {
 		return ProviderLoginChallenge{}, string(output), err
 	}
 
 	text := string(output)
-	login := parseJimengLoginChallenge(output)
-	if login.Status == "pending" {
-		if login.VerificationURI == "" || login.UserCode == "" || login.DeviceCode == "" {
-			return ProviderLoginChallenge{}, text, errors.New("jimeng login returned an incomplete device challenge")
-		}
-		if login.Message == "" {
-			login.Message = "即梦登录链接已生成，请在浏览器中完成登录。"
-		}
-	}
 	return login, text, nil
 }
 

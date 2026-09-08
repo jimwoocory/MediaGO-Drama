@@ -7,6 +7,8 @@ export const desktopIpcChannel = {
 	copyFileToDirectory: "desktop:copy-file-to-directory",
 	pickDirectory: "desktop:pick-directory",
 	pickFile: "desktop:pick-file",
+	setWorkspaceDirectory: "desktop:set-workspace-directory",
+	resetWorkspaceDirectory: "desktop:reset-workspace-directory",
 	savePromptPack: "desktop:save-prompt-pack",
 	showNotification: "desktop:show-notification",
 	notificationClicked: "desktop:notification-clicked",

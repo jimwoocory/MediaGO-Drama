@@ -481,11 +481,31 @@ func TestAgentRuntimeConfigFromACPSession(t *testing.T) {
 	if config.Permission == nil {
 		t.Fatal("permission config is nil")
 	}
-	if config.Permission.Source != AgentRuntimeConfigSourceMode || config.Permission.CurrentValue != "ask" {
-		t.Fatalf("permission config = %#v, want ACP mode source and current value", config.Permission)
+	if config.Permission.Source != AgentRuntimeConfigSourceMode || config.Permission.CurrentValue != "full-access" {
+		t.Fatalf("permission config = %#v, want ACP mode source and automatic default", config.Permission)
 	}
 	if len(config.Permission.Options) != 2 || config.Permission.Options[0].Description != modeDescription {
 		t.Fatalf("permission options = %#v, want ask/full-access modes", config.Permission.Options)
+	}
+}
+
+func TestShouldAutoApproveACPPermissionsRecognizesFullAccessModes(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{name: "missing preference", value: "", want: true},
+		{name: "full access", value: "full-access", want: true},
+		{name: "agent full access", value: "agent-full-access", want: true},
+		{name: "agent uses automatic workspace policy", value: "agent", want: true},
+		{name: "ask", value: "ask", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := shouldAutoApproveACPPermissions(agentACPConfigSelection{Value: test.value}); got != test.want {
+				t.Fatalf("shouldAutoApproveACPPermissions(%q) = %t, want %t", test.value, got, test.want)
+			}
+		})
 	}
 }
 

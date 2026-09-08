@@ -24,6 +24,7 @@ func applyProviderReasoningConfig(config ProcessConfig, request agentRunRequest)
 	default:
 		return ProcessConfig{}, fmt.Errorf("invalid provider reasoning effort %q", effort)
 	}
+	acpLog().Info("provider reasoning configured", "provider", provider, "reasoning_effort", effort)
 	values := map[string]json.RawMessage{}
 	if raw := strings.TrimSpace(config.Env["CODEX_CONFIG"]); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &values); err != nil {

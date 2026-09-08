@@ -81,7 +81,9 @@ func runSettingsCLIFixture(mode string, args []string) int {
 		switch command {
 		case "login --headless":
 			fmt.Println("verification_uri: https://example.test/device\nuser_code: ABCD-EFGH\ndevice_code: device-123")
-			return 0
+			// The real CLI returns a device challenge before browser approval and
+			// exits non-zero. The service must still hand that challenge to the UI.
+			return 1
 		case "login checklogin --device_code=device-123 --poll=30":
 			fmt.Println("即梦本地登录态已可用")
 			return 0
